@@ -1,0 +1,138 @@
+{
+	getters: `{
+		
+		$year = 31104000; // 360 * 24 * 3600;
+
+		// increase the supply without changing the price
+		$increase_supply = ($state, $ds) => {
+			$s = $state.supply;
+			$s0 = $state.s0;
+			$new_s = $s + $ds;
+			$new_s0 = $s0 * $new_s * $new_s / ($s0 * $ds + $s * $s);
+			$coef_multiplier = $s * $s / $new_s / $new_s; //   < 1
+
+			$state.supply = $new_s;
+			$state.s0 = $new_s0;
+			$state.coef = $state.coef * $coef_multiplier;
+		};
+
+		$subtract_grant = ($state, $dr) => {
+			$r = $state.reserve;
+			$s = $state.supply;
+			$s0 = $state.s0;
+			
+			$ro = $dr/$r;
+			$ro1 = 1 - $ro;
+
+			$new_s0 = 1 / ($ro/$s + $ro1/$s0);
+			$coef_multiplier = $ro1 * $ro1; //   < 1
+
+			$state.reserve = $r - $dr;
+			$state.s0 = $new_s0;
+			$state.coef = $state.coef * $coef_multiplier;
+		};
+
+		$update_total_emissions = ($state, $props) => {
+			$total_new_emissions = $state.total_normalized_vp 
+				? (timestamp - $state.last_emissions_ts)/$year * $props.inflation_rate * $state.supply
+				: 0;
+			$state.last_emissions_ts = timestamp;
+			$state.stakers_emissions = $state.stakers_emissions + $props.stakers_share * $total_new_emissions;
+			$state.lp_emissions = $state.lp_emissions + (1 - $props.stakers_share) * $total_new_emissions;
+		};
+
+		$distribute_stakers_emissions = ($state, $user, $props) => {
+			$update_total_emissions($state, $props);
+
+			$new_emissions_since_prev_visit = $state.stakers_emissions - $user.last_stakers_emissions;
+			$user.last_stakers_emissions = $state.stakers_emissions;
+			
+			if ($user.normalized_vp AND $state.total_normalized_vp){
+				$reward = $new_emissions_since_prev_visit * $user.normalized_vp/$state.total_normalized_vp;
+				$user.reward = $user.reward + $reward;
+				$increase_supply($state, $reward);
+			}
+		};
+
+		$distribute_lp_emissions = ($state, $lp, $pool, $pool_vps, $total_lp_balance, $props) => {
+			$update_total_emissions($state, $props);
+
+			if (!$state.total_normalized_vp OR $pool.blacklisted)
+				return;
+			$pool_share = $pool_vps[$pool.asset_key]/$state.total_normalized_vp;
+
+			$new_total_lp_emissions_since_prev_visit = $state.lp_emissions - $pool.last_lp_emissions;
+			$pool.last_lp_emissions = $state.lp_emissions; // that's total LP emissions to all the pools
+			$pool.received_emissions = $pool.received_emissions + $new_total_lp_emissions_since_prev_visit * $pool_share;
+
+			$new_emissions_since_prev_visit = $pool.received_emissions - $lp.last_pool_emissions;
+			$lp.last_pool_emissions = $pool.received_emissions;
+
+			if ($lp.last_distribution_ts AND $lp.balance AND $total_lp_balance){
+				$reward = $new_emissions_since_prev_visit * $lp.balance/$total_lp_balance;
+				$lp.reward = $lp.reward + $reward;
+				$increase_supply($state, $reward);
+			}
+			$lp.last_distribution_ts = timestamp;
+		};
+
+
+		$distribute_new_vp = ($votes, $pool_vps, $delta_normalized_vp, $percentages) => {
+			$totals = {total: 0};
+			foreach($percentages, 20, ($pool_asset_key, $percentage) => {
+				require(+substring($pool_asset_key, 1) AND starts_with($pool_asset_key, 'a'), "invalid pool asset key "||$pool_asset_key);
+				require($percentage > 0, "invalid percentage "||$percentage);
+				require(exists($pool_vps[$pool_asset_key]), "pool asset key "||$pool_asset_key||" not found in this group");
+				$totals.total = $totals.total + $percentage;
+				$added_vp = $percentage/100 * $delta_normalized_vp;
+				$votes[$pool_asset_key] = $votes[$pool_asset_key] + $added_vp;
+				$pool_vps[$pool_asset_key] = $pool_vps[$pool_asset_key] + $added_vp;
+			});
+			require($totals.total == 100, "percentages sum to "||$totals.total);
+			require(length($votes) <= 100, "max total number of supported pools is 100");
+			$pool_vps.total = $pool_vps.total + $delta_normalized_vp;
+		};
+
+
+		$apply_vote = ($votes, $pool_vps, $group_key1, $group_key2, $group_vps, $changes) => {
+			$totals = {total: 0, max: 0};
+			foreach($changes, 20, ($pool_asset_key, $delta_vp) => {
+				require(+substring($pool_asset_key, 1) AND starts_with($pool_asset_key, 'a'), "invalid pool asset key "||$pool_asset_key);
+				$votes[$pool_asset_key] = $votes[$pool_asset_key] + $delta_vp;
+				$p = $votes[$pool_asset_key];
+				require($p >= 0, "would have negative votes for pool_asset_key "||$pool_asset_key);
+				if ($p == 0)
+					delete($votes, $pool_asset_key);
+				$totals.total = $totals.total + $delta_vp;
+				if (abs($delta_vp) > $totals.max)
+					$totals.max = abs($delta_vp);
+				if (exists($pool_vps[$group_key1][$pool_asset_key]))
+					$group_key = $group_key1;
+				else if (exists($pool_vps[$group_key2][$pool_asset_key]))
+					$group_key = $group_key2;
+				else
+					bounce("pool asset key "||$pool_asset_key||" not found in any of the two groups");
+				$pool_vps[$group_key][$pool_asset_key] = $pool_vps[$group_key][$pool_asset_key] + $delta_vp;
+				$pool_vps[$group_key].total = $pool_vps[$group_key].total + $delta_vp;
+				$group_vps[$group_key] = $group_vps[$group_key] + $delta_vp;
+			});
+			require(abs($totals.total) < $totals.max * 1e-15, "total votes changed by "||$totals.total); // allow some rounding error
+			require(length($votes) <= 100, "max total number of supported pools is 100");
+		};
+
+		$remove_votes = ($votes, $pool_vps) => {
+			foreach($votes, 100, ($pool_asset_key, $vp) => {
+				require(exists($pool_vps[$pool_asset_key]), "pool asset key "||$pool_asset_key||" not found in the indicated group");
+				$pool_vps[$pool_asset_key] = $pool_vps[$pool_asset_key] - $votes[$pool_asset_key];
+			});
+		};
+
+
+	}`,
+	messages: [{
+		app: 'state',
+		state: `{
+			bounce("library only");
+		}`
+	}]
+}

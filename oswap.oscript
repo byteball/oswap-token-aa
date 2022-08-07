@@ -1,0 +1,777 @@
+/* 
+var['pool_vps_XXXX'] structure:
+assoc: pool_asset_key => voting power
+{"12345":1234.56789012345,"12346":1234.56789012345}
+25 characters per pool, 4096 max, 4096/25=160 pools
+
+track only normalized VP: don't need to update VP all the time when nothing is added/removed
+newly added VP has increasingly larger weight and dilutes the existing VP faster.
+track votes as normalized VP:
+- easy to add new VP
+- rounding issues
+*/
+{
+	doc_url: "https://oswap.io/token.json",
+	getters: `{
+
+		$reserve_asset = 'base';
+		$initial_s0 = 1e13;
+
+
+		$lib_aa = 'SMUE77YPLHAC3ICWVZFHTWBVCETUXLWR';
+		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
+		$year = 31104000; // 360 * 24 * 3600;
+
+		$get_param = ($name, $default) => {
+			$value = var[$name];
+			exists($value) ? $value : $default
+		};
+
+		$get_swap_fee = () => $get_param('swap_fee', 0.003);
+		$get_arb_profit_tax = () => $get_param('arb_profit_tax', 0.9);
+		$get_base_rate = () => $get_param('base_rate', 0.3); // rate of appreciation if TVL = base TVL
+		$get_inflation_rate = () => $get_param('inflation_rate', 0.1);
+		$get_stakers_share = () => $get_param('stakers_share', 0.5); // share of emissions that is distributed among stakers
+		$get_base_tvl = () => $get_param('base_tvl', 1e6); // in USD
+		$get_oracle = () => $get_param('oracle', 'ORACLEADDRESS');
+		$get_challenging_period = () => $get_param('challenging_period', 432000); // 5 days
+
+		$get_reserve_by_state = ($s, $state) => $state.coef * $s * $state.s0 / ($state.s0 - $s);
+
+		$get_tvl = () => data_feed[[oracles=$get_oracle(), feed_name='TVL', ifnone=0]];
+
+		$get_appreciation_rate = () => $get_base_rate() * $get_tvl() / $get_base_tvl();
+		$get_tokens_by_state = ($r, $state) => 1 / (1/$state.s0 + $state.coef/$r);
+		$get_price_by_state = ($s, $state) => $state.coef * ($state.s0 / ($state.s0 - $s))^2; // derivative
+
+		$get_appreciation_result = ($state) => {
+			$elapsed_time = timestamp - $state.last_ts;
+		//	log('elapsed', $elapsed_time);
+			$r = $state.reserve;
+			$s = $state.supply;
+			$s0 = $state.s0;
+			if ($s == 0 OR $elapsed_time == 0)
+				return {new_s0: $s0, coef_multiplier: 1};
+			$p = $get_price_by_state($s, $state);
+			$new_p = $p * (1 +  $elapsed_time/$year * $get_appreciation_rate());
+			$new_s0 = $s + 1 / ($new_p/$r - 1/$s);
+			require($new_s0 > 0, "appreciation new s0 = "||$new_s0);
+			$coef_multiplier = $s0/$new_s0 * ($new_s0 - $s)/($s0 - $s); //   < 1
+			{
+				new_s0: $new_s0,
+				coef_multiplier: $coef_multiplier,
+			}
+		};
+
+		$apply_appreciation = ($state) => {
+			$appr_res = $get_appreciation_result($state);
+			$state.s0 = $appr_res.new_s0;
+			$state.coef = $state.coef * $appr_res.coef_multiplier;
+			$state.last_ts = timestamp;
+		};
+
+
+		$get_reserve = ($s) => {
+			$state = var['state'];
+			$apply_appreciation($state);
+			$get_reserve_by_state(exists($s) ? $s : $s, $state);
+		};
+
+		$get_tokens = ($r) => {
+			$state = var['state'];
+			$apply_appreciation($state);
+			$get_tokens_by_state(exists($r) ? $r : $state.reserve, $state)
+		};
+		
+		$get_price = ($s) => {
+			$state = var['state'];
+			$apply_appreciation($state);
+			$get_price_by_state(exists($s) ? $s : $state.supply, $state)
+		};
+
+
+
+
+		$get_exchange_result_by_state = ($tokens, $delta_r, $state) => {
+			require($tokens > 0 AND $delta_r == 0 OR $tokens == 0 AND $delta_r > 0, "invalid input");
+
+			$r = $state.reserve;
+			$s = $state.supply;
+			$p = $get_price_by_state($s, $state);
+			log('p = ', $p);
+
+			$swap_fee_rate = $get_swap_fee();
+			$arb_profit_tax_rate = $get_arb_profit_tax();
+
+			if ($tokens) { // selling tokens
+				$new_s = $s - $tokens;
+				$net_new_r = $get_reserve_by_state($new_s, $state);
+				$swap_fee = $swap_fee_rate * ($r - $net_new_r);
+			}
+			else { // buying tokens
+				$gross_new_r = $r + $delta_r;
+				$swap_fee = $swap_fee_rate * $delta_r;
+				$new_r1 = $r + $delta_r - $swap_fee;
+				$new_s1 = $get_tokens_by_state($new_r1, $state);
+				log('new_s1 = ', $new_s1);
+				$new_p1 = $get_price_by_state($new_s1, $state);
+				log('new_p1 = ', $new_p1);
+				$arb_profit_tax = $arb_profit_tax_rate * ($new_p1 - $p) * ($new_s1 - $s) / 2;
+
+				$net_new_r = $new_r1 - $arb_profit_tax;
+				$new_s = floor($get_tokens_by_state($net_new_r, $state));
+				log('new_s = ', $new_s);
+				$delta_s = $new_s - $s;
+			}
+
+			$new_p = $get_price_by_state($new_s, $state);
+			log('new_p = ', $new_p);
+			
+			if ($tokens)
+				$arb_profit_tax = $arb_profit_tax_rate * abs(($new_p - $p) * ($new_s - $s) / 2);
+			$total_fee = $swap_fee + $arb_profit_tax;
+
+			if ($tokens){
+				$gross_new_r = ceil($net_new_r + $total_fee);
+				$payout = $r - $gross_new_r;
+				$fee_percent = $total_fee / ($r - $net_new_r) * 100;
+			}
+			else
+				$fee_percent = $total_fee / $delta_r * 100;
+
+			$coef_multiplier = $gross_new_r / $net_new_r;
+
+			{
+				payout: $payout,
+				delta_s: $tokens ? -$tokens : $delta_s,
+				old_reserve: $r,
+				new_reserve: $gross_new_r,
+				delta_reserve: $gross_new_r - $r,
+				old_price: $p,
+				new_price: $new_p,
+				swap_fee: $swap_fee,
+				arb_profit_tax: $arb_profit_tax,
+				total_fee: $total_fee,
+				fee_percent: $fee_percent,
+				coef_multiplier: $coef_multiplier,
+			}
+		};
+
+		$get_exchange_result = ($tokens, $delta_r) => {
+			$state = var['state'];
+			$apply_appreciation($state);
+			$get_exchange_result_by_state($tokens, $delta_r, $state)
+		};
+
+
+		$get_vp = ($user_address) => {
+			$user = var['user_' || $user_address];
+			$user ? $user.normalized_vp * 4^((timestamp - $common_ts)/$year) : 0
+		};
+
+	}`,
+	init: `{
+
+		$lib = $lib_aa||'';
+
+		$aa2aa_bytes = 2000;
+		
+		// reserve
+		$min_contribution = ($reserve_asset == 'base') ? 99999 : 0;
+		$network_fee = ($reserve_asset == 'base') ? 1000 : 0;
+
+		// tokens
+		$asset = var['asset'];
+
+		$state = var['state'] OTHERWISE {
+			coef: 1,
+			s0: $initial_s0,
+			supply: 0,
+			reserve: 0,
+			last_ts: timestamp,
+			total_normalized_vp: 0,
+			stakers_emissions: 0,
+			lp_emissions: 0,
+		};
+
+		if ($asset)
+			$apply_appreciation($state);
+
+		if (trigger.data.to AND !is_valid_address(trigger.data.to))
+			bounce("bad to address");
+		$to = trigger.data.to OTHERWISE trigger.address;
+		$user_address = (trigger.data.unstake OR trigger.data.withdraw_staking_reward OR trigger.data.withdraw_lp_reward OR trigger.data.withdraw OR trigger.data.vote_shares OR trigger.data.vote_whitelist OR trigger.data.vote_blacklist OR trigger.data.vote_value) ? trigger.address : $to;
+
+		$user = var['user_' || $user_address] OTHERWISE {
+			balance: 0,
+			reward: 0,
+			normalized_vp: 0,
+			last_stakers_emissions: 0,
+			expiry_ts: 0,
+		};
+
+
+		$props = {
+			inflation_rate: $get_inflation_rate(),
+			stakers_share: $get_stakers_share(),
+		};
+
+		$challenging_period = $get_challenging_period();
+
+	}`,
+	messages: {
+		cases: [
+
+			// 0. define the token asset
+			{
+				if: `{ trigger.data.define AND !$asset }`,
+				messages: [
+					{
+						app: 'asset',
+						payload: {
+							// without cap
+							is_private: false,
+							is_transferrable: true,
+							auto_destroy: false,
+							fixed_denominations: false,
+							issued_by_definer_only: true,
+							cosigned_by_definer: false,
+							spender_attested: false,
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var['asset'] = response_unit;
+							response['asset'] = response_unit;
+						}`
+					}
+				]
+			},
+		
+
+			// stake tokens
+			// the newly added VP is split among pools in group group_key according to percentages
+			{
+				if: `{ $asset AND (trigger.output[[asset=$asset]] > 0 OR trigger.data.stake_reward AND $to == trigger.address) AND trigger.data.stake AND trigger.data.term AND trigger.data.group_key AND trigger.data.percentages }`,
+				init: `{
+					$term = trigger.data.term; // in days
+					$four_years = 4 * 360;
+					require($term > 0 AND is_integer($term) AND $term <= $four_years, "invalid term");
+
+					$new_expiry_ts = timestamp + $term * 24 * 3600;
+					require($new_expiry_ts >= $user.expiry_ts, "the new term should expire after " || timestamp_to_string($user.expiry_ts));
+
+					$group_key = trigger.data.group_key;
+					$votes = var['votes_'||$user_address] OTHERWISE {};
+					$group_vps = var['group_vps'] OTHERWISE {};
+					$pool_vps = var['pool_vps_'||$group_key] OTHERWISE {};
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							$lib#0.$distribute_stakers_emissions($state, $user, $props);
+
+							$accumulated_reward = trigger.data.stake_reward AND $to == trigger.address ? floor($user.reward) : 0;
+							$amount = trigger.output[[asset=$asset]] + $accumulated_reward;
+							$new_balance = $user.balance + $amount;
+						//	require($amount > 0, "nothing to stake");
+							$final_voting_power = $new_balance / 256;
+							$normalized_voting_power = $final_voting_power * 4^($term/360 + (timestamp - $common_ts)/$year); // vp decays 4 times every year
+
+
+							$user.expiry_ts = $new_expiry_ts;
+
+							$user.balance = $new_balance;
+							if ($accumulated_reward)
+								$user.reward = $user.reward - $accumulated_reward;
+
+							$delta_normalized_vp = $normalized_voting_power - $user.normalized_vp;
+							$user.normalized_vp = $normalized_voting_power;
+							$state.total_normalized_vp = $state.total_normalized_vp + $delta_normalized_vp;
+
+							$lib#1.$distribute_new_vp($votes, $pool_vps, $delta_normalized_vp, trigger.data.percentages);
+							$group_vps[$group_key] = $group_vps[$group_key] + $delta_normalized_vp;
+							$group_vps.total = $group_vps.total + $delta_normalized_vp;
+
+							var['votes_'||$user_address] = $votes;
+							var['pool_vps_'||$group_key] = $pool_vps;
+							var['group_vps'] = $group_vps;
+
+							var['user_'||$user_address] = $user;
+							var['state'] = $state;
+						}`
+					}
+				]
+			},
+
+			// unstake tokens while forfeiting all unclaimed rewards
+			// before unstaking, all votes must be moved to a single group
+			{
+				if: `{ $asset AND trigger.data.unstake AND trigger.data.group_key }`,
+				init: `{
+					require(timestamp >= $user.expiry_ts, "you can unstake only after " || timestamp_to_string($user.expiry_ts));
+					$group_key = trigger.data.group_key;
+					$votes = var['votes_'||$user_address];
+					require($votes, "you have no votes");
+					$group_vps = var['group_vps'] OTHERWISE {};
+					$pool_vps = var['pool_vps_'||$group_key] OTHERWISE {};
+				}`,
+				messages: [
+					{ // send the unstaked tokens
+						app: 'payment',
+						payload: {
+							asset: `{$asset}`,
+							outputs: [
+								{address: "{$to}", amount: "{ $user.balance }"}
+							]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							$removed_normalized_vp = $user.normalized_vp;
+							$lib#1.$remove_votes($votes, $pool_vps);
+							$pool_vps.total = $pool_vps.total - $removed_normalized_vp;
+							$group_vps[$group_key] = $group_vps[$group_key] - $removed_normalized_vp;
+							$group_vps.total = $group_vps.total - $removed_normalized_vp;
+
+							var['user_'||$user_address] = false;
+							var['votes_'||$user_address] = false;
+							
+							var['pool_vps_'||$group_key] = $pool_vps;
+							var['group_vps'] = $group_vps;
+
+							$state.total_normalized_vp = $state.total_normalized_vp - $removed_normalized_vp;
+							var['state'] = $state;
+						}`
+					}
+				]
+			},
+
+			// withdraw staking rewards
+			{
+				if: `{ $asset AND trigger.data.withdraw_staking_reward }`,
+				init: `{
+					$lib#0.$distribute_stakers_emissions($state, $user, $props);
+					$reward = floor($user.reward); // fractional part is lost
+				//	require($reward > 0, "no reward yet");
+				}`,
+				messages: [
+					{ // send the accumulated reward
+						app: 'payment',
+						payload: {
+							asset: `{$asset}`,
+							outputs: [
+								{address: "{$to}", amount: "{ $reward }"}
+							]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							$user.reward = 0;
+							var['user_'||$user_address] = $user;
+							var['state'] = $state;
+						}`
+					}
+				]
+			},
+
+			// add pool tokens to receive a share of emissions
+			// withdraw pool tokens
+			// withdraw LP rewards
+			{
+				if: `{trigger.data.deposit OR trigger.data.pool_asset AND (trigger.data.withdraw OR trigger.data.withdraw_lp_reward)}`,
+				init: `{
+					if (trigger.data.deposit) {
+						$bDeposit = true;
+						$pool_asset = trigger.output[[asset!='base']].asset;
+						require($pool_asset != 'ambiguous' AND $pool_asset != 'none' AND $pool_asset != $asset, "invalid pool asset");
+						$deposit_amount = trigger.output[[asset!='base']];
+						$delta_balance = $deposit_amount;
+					}
+					else if (trigger.data.pool_asset) {
+						$pool_asset = trigger.data.pool_asset;
+						if (trigger.data.withdraw)
+							$bWithdraw = true;
+					//	else if (trigger.data.withdraw_lp_reward)
+							$bWithdrawLpReward = true;
+					}
+					$pool = var['pool_'||$pool_asset];
+					require($pool, "unknown asset");
+					$lp_key = 'lp_' || $user_address || '_' || $pool.asset_key;
+					$lp = var[$lp_key] OTHERWISE {balance: 0, last_pool_emissions: 0, last_distribution_ts: 0, reward: 0};
+					if (trigger.data.pool_asset){
+						require($lp.balance > 0, "you have no balance in this pool asset");
+						if ($bWithdraw){
+							$withdrawal_amount = trigger.data.amount OTHERWISE $lp.balance;
+							require(is_integer($withdrawal_amount) AND $withdrawal_amount > 0 AND $withdrawal_amount <= $lp.balance, "invalid withdrawal amount");
+							$delta_balance = -$withdrawal_amount;
+						}
+					}
+					$pool_vps = var['pool_vps_'||$pool.group_key] OTHERWISE {};
+					$total_lp_balance = var['pool_asset_balance_' || $pool.asset_key];
+					$lib#0.$distribute_lp_emissions($state, $lp, $pool, $pool_vps, $total_lp_balance, $props);
+				}`,
+				messages: [
+					{
+						if: `{$bWithdraw}`,
+						app: 'payment',
+						payload: {
+							asset: `{$pool_asset}`,
+							outputs: [{address: "{$to}", amount: "{$withdrawal_amount}"}]
+						}
+					},
+					{ // send the accumulated reward
+						if: `{$bWithdrawLpReward}`,
+						app: 'payment',
+						payload: {
+							asset: `{$asset}`,
+							outputs: [
+								{address: "{$to}", amount: "{ floor($lp.reward) }"}  // fractional part is lost
+							]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							if ($bDeposit OR $bWithdraw){
+								$lp.balance = $lp.balance + $delta_balance;
+								var['pool_asset_balance_' || $pool.asset_key] += $delta_balance;
+								if ($bDeposit)
+									response['deposited'] = $deposit_amount;
+							}
+							if ($bWithdrawLpReward)
+								$lp.reward = 0;
+							var[$lp_key] = $bWithdraw ? false : $lp;
+							var['pool_'||$pool_asset] = $pool;
+							var['state'] = $state;
+						}`
+					}
+				]
+			},
+
+			// vote for LP distribution shares
+			{
+				if: `{trigger.data.vote_shares AND trigger.data.changes AND trigger.data.group_key1}`,
+				init: `{
+					$changes = trigger.data.changes;
+					$group_key1 = trigger.data.group_key1;
+					$group_key2 = trigger.data.group_key2;
+					require(is_assoc($changes), "invalid changes object");
+					$votes = var['votes_'||$user_address] OTHERWISE {};
+					$group_vps = var['group_vps'] OTHERWISE {};
+					$pool_vps = {};
+					$pool_vps[$group_key1] = var['pool_vps_'||$group_key1] OTHERWISE {};
+					if ($group_key2)
+						$pool_vps[$group_key2] = var['pool_vps_'||$group_key2] OTHERWISE {};
+					$lib#1.$apply_vote($votes, $pool_vps, $group_key1, $group_key2, $group_vps, $changes);
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							var['votes_'||$user_address] = $votes;
+							var['group_vps'] = $group_vps;
+							var['pool_vps_'||$group_key1] = $pool_vps[$group_key1];
+							if ($group_key2)
+								var['pool_vps_'||$group_key2] = $pool_vps[$group_key2];
+						}`
+					}
+				]
+			},
+
+			// vote for whitelist/blacklist
+			{
+				if: `{(trigger.data.vote_whitelist OR trigger.data.vote_blacklist) AND trigger.data.pool_asset}`,
+				init: `{
+					$sign = trigger.data.vote_whitelist ? 1 : -1;
+					$pool_asset = trigger.data.pool_asset;
+					$wl_votes = var['wl_votes_'||$pool_asset] OTHERWISE {vp: 0, flip_ts: 0};
+
+					$old_vp = var['user_wl_votes_'||$user_address||'_'||$pool_asset];
+					$new_vp = $user.normalized_vp * $sign;
+					$added_vp = $new_vp - $old_vp;
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							var['user_wl_votes_'||$user_address||'_'||$pool_asset] += $added_vp;
+
+							$new_total_vp = $wl_votes.vp + $added_vp;
+							if ($new_total_vp AND $wl_votes.vp * $new_total_vp <= 0) // flipped the sign
+								$wl_votes.flip_ts = timestamp;
+							$wl_votes.vp = $new_total_vp;
+							var['wl_votes_'||$pool_asset] = $wl_votes;
+
+							// commit if have the majority or stayed unchallenged long enough
+							if (abs($new_total_vp) > $state.total_normalized_vp/2 OR timestamp > $wl_votes.flip_ts + $challenging_period OR $state.total_normalized_vp == 0){
+								$pool = var['pool_'||$pool_asset];
+								if ($new_total_vp > 0 OR $state.total_normalized_vp == 0){ // add to the whitelist (or re-add)
+									if (!$pool){ // create a new pool
+										var['last_asset_num'] += 1;
+										$asset_key = 'a' || var['last_asset_num'];
+									/*	if (trigger.data.group_key){ // indicated the group where to add the new pool
+											$group_key = trigger.data.group_key;
+											$pool_vps = var['pool_vps_'||$group_key];
+											require($pool_vps, "no such group");
+											require(length($pool_vps) < 101, "the group is already full");
+										}
+										else {*/ // add the new pool to the last group, or create a new group if the last one is full
+											$last_group_num = var['last_group_num'];
+											$last_pool_vps = var['pool_vps_g'||$last_group_num];
+											// 101 includes the 'total' key
+											if (!$last_group_num OR length($last_pool_vps) >= 101){ // start a new group
+												var['last_group_num'] += 1;
+												$group_num = $last_group_num + 1;
+												$pool_vps = {total:0};
+											}
+											else{
+												$group_num = $last_group_num;
+												$pool_vps = $last_pool_vps;
+											}
+											$group_key = 'g' || $group_num;
+									//	}
+										$pool_vps[$asset_key] = 0;
+										var['pool_vps_'||$group_key] = $pool_vps;
+										$new_pool = {
+											asset_key: $asset_key,
+											group_key: $group_key,
+											last_lp_emissions: $state.lp_emissions,
+											received_emissions: 0,
+										};
+										response['message'] = 'whitelisted';
+									}
+									else{ // revive a previously blacklisted pool
+										if ($pool.blacklisted){
+											$pool.blacklisted = false;
+											$pool.last_lp_emissions = $state.lp_emissions; // skipping all emissions accrued while we were blacklisted
+											response['message'] = 're-whitelisted';
+										}
+									}
+								}
+								else{ // blacklist
+									if ($pool AND !$pool.blacklisted){
+										$pool.blacklisted = true;
+										response['message'] = 'blacklisted';
+									}
+								}
+								var['pool_'||$pool_asset] = $new_pool OTHERWISE $pool;
+							}
+						}`
+					}
+				]
+			},
+
+			// vote for updating the token's props and for proposals to pay grants
+			{
+				if: `{trigger.data.vote_value AND trigger.data.name}`,
+				init: `{
+					$name = trigger.data.name;
+					$value = trigger.data.value;
+					if (exists($value)){
+						if ($name == 'swap_fee')
+							require($value >= 0 AND $value < 1, "invalid value");
+						else if ($name == 'arb_profit_tax')
+							require($value >= 0, "invalid value");
+						else if ($name == 'base_rate')
+							require($value >= 0, "invalid value");
+						else if ($name == 'inflation_rate')
+							require($value >= 0, "invalid value");
+						else if ($name == 'stakers_share')
+							require($value >= 0 AND $value <= 1, "invalid value");
+						else if ($name == 'base_tvl')
+							require($value > 0, "invalid value");
+						else if ($name == 'oracle')
+							require(is_valid_address($value), "invalid value");
+						else if ($name == 'challenging_period')
+							require(is_integer($value) AND $value > 0, "invalid value");
+						else if ($name == 'proposal'){
+							$num = trigger.data.num;
+							require($num, "no proposal number");
+							require($value == 'yes' OR $value == 'no', "invalid value");
+							$proposal = var['proposal_' || $num];
+							require($proposal, "no such proposal");
+							require(parse_date($proposal.expiry) > timestamp, "the proposal has expired");
+							require(!$proposal.result, "the proposal has already been decided upon");
+						}
+						else
+							bounce("unknown variable");
+					}
+					$full_name = $name != 'proposal' ? $name : $name||$num;
+					$vote = var['user_value_votes_'||$user_address||'_'||$full_name];
+					$vp = $user.normalized_vp;
+					$leader = var['leader_'||$full_name] OTHERWISE {vp: 0};
+					if (exists($value)){
+						$added_vp = $vp - ($vote AND $vote.value == $value ? $vote.vp : 0);
+						$new_vp = var['value_votes_'||$full_name||'_'||$value] + $added_vp;
+						if ((!exists($leader.value) OR $leader.value != $value) AND $new_vp > $leader.vp){
+							$leader.vp = $new_vp;
+							$leader.value = $value;
+							$leader.flip_ts = timestamp;
+							$bLeaderChanged = true;
+						}
+						$bProposalJustFinished = $leader.vp > $state.total_normalized_vp/2 AND $name == 'proposal' AND !$proposal.result;
+						if ($bProposalJustFinished)
+							$proposal.result = $leader.value;
+					}
+				}`,
+				messages: [
+					{
+						if: `{$bProposalJustFinished AND $proposal.result == 'yes'}`,
+						app: 'payment',
+						payload: {
+							asset: '{$reserve_asset}',
+							outputs: [
+								{address: '{$proposal.recipient}', amount: '{$proposal.amount}'},
+							]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							if ($vote)
+								var['value_votes_'||$full_name||'_'||$vote.value] -= $vote.vp;
+							if (exists($value)){
+								var['value_votes_'||$full_name||'_'||$value] += $vp;
+								if ($bLeaderChanged)
+									var['leader_'||$full_name] = $leader;
+								
+								$is_new_value = () => {
+									$current_value = var[$name];
+									!exists($current_value) OR $current_value != $leader.value
+								};
+
+								// commit token params
+								if ($name != 'proposal' AND $is_new_value() AND ($leader.vp > $state.total_normalized_vp/2 OR timestamp > $leader.flip_ts + $challenging_period AND $name != 'challenging_period')){
+									var[$name] = $leader.value;
+								}
+								// commit proposals
+								if ($bProposalJustFinished){
+									var['proposal_' || $num] = $proposal;
+									if ($proposal.result == 'yes'){
+										$lib#0.$subtract_grant($state, $proposal.amount);
+										var['state'] = $state;
+									}
+								}
+							}
+							var['user_value_votes_'||$user_address||'_'||$name] = exists($value) ? {value:$value, vp:$vp} : false;
+						}`
+					}
+				]
+			},
+
+			// add a new proposal for paying a grant to someone
+			{
+				if: `{ trigger.data.add_proposal }`,
+				init: `{
+					require(!is_valid_address(trigger.data.recipient), "invalid grant recipient address");
+					require(is_integer(trigger.data.amount) AND trigger.data.amount > 0, "invalid grant amount");
+					require(unit[trigger.data.unit], "proposal unit not found");
+					require(trigger.data.expiry, "proposal expiry date not set");
+					$expiry_ts = parse_date(trigger.data.expiry);
+					require($expiry_ts, "invalid expiry date");
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							var['count_proposals'] += 1;
+							$num = var['count_proposals'];
+							var['proposal_' || $num] = {
+								recipient: trigger.data.recipient,
+								amount: trigger.data.amount,
+								unit: trigger.data.unit,
+								expiry: trigger.data.expiry,
+							};
+						}`
+					}
+				]
+			},
+
+			// mint or redeem tokens
+			{
+				if: `{ $asset AND (trigger.output[[asset=$reserve_asset]] > $min_contribution OR trigger.output[[asset=$asset]] > 0) }`,
+				init: `{
+
+					$tokens = trigger.output[[asset=$asset]];
+					if ($tokens)
+						require(trigger.output[[asset=$reserve_asset]] <= $min_contribution, "don't send the reserve when redeeming tokens");
+					
+					$to_aa = $to != trigger.address AND is_aa($to);
+					$full_network_fee = $network_fee + ($reserve_asset == 'base' ? ($to_aa ? $aa2aa_bytes : 0) : 0);
+
+					$reserve_asset_amount = $tokens ? 0 : trigger.output[[asset=$reserve_asset]] - $full_network_fee; // subtract a fee to compensate for network fees
+					
+					$res = $get_exchange_result_by_state($tokens, $reserve_asset_amount, $state);
+					
+					response['price'] = $res.new_price;
+					response['swap_fee'] = $res.swap_fee;
+					response['arb_profit_tax'] = $res.arb_profit_tax;
+					response['total_fee'] = $res.total_fee;
+					response['coef_multiplier'] = $res.coef_multiplier;
+
+					if ($res.payout AND $res.payout < 0)
+						bounce("unexpected payout < 0");
+					if ($res.payout AND trigger.data.min_reserve_tokens AND $res.payout < trigger.data.min_reserve_tokens)
+						bounce("payout would be only " || $res.payout);
+					if (trigger.data.max_fee_percent AND $res.fee_percent > trigger.data.max_fee_percent)
+						bounce("fee would be " || $res.fee_percent || '%');
+				}`,
+				messages: [
+					{ // send newly minted tokens
+						if: "{$res.delta_s > 0}",
+						app: 'payment',
+						payload: {
+							asset: `{$asset}`,
+							outputs: [
+								{address: "{$to}", amount: "{ $res.delta_s }"}
+							]
+						}
+					},
+					{ // pay out the redeemed reserve
+						app: 'payment',
+						payload: {
+							asset: `{$reserve_asset}`,
+							outputs: [
+								{address: "{$to}", amount: "{$res.payout}", if: "{$res.payout}"},
+								{address: "{$to}", amount: "{$aa2aa_bytes}", if: "{ $reserve_asset == 'base' AND $to_aa}"},
+							]
+						}
+					},
+					{ // send some bytes to AAs
+						if: "{ $reserve_asset != 'base' AND $to_aa }",
+						app: 'payment',
+						payload: {
+							asset: 'base',
+							outputs: [
+								{address: "{$to}", amount: "{$aa2aa_bytes}"},
+							]
+						}
+					},
+					{ // if we are sending to an AA, make sure its response goes to our requestor
+						if: `{ $to_aa }`,
+						app: 'data',
+						payload: {
+							to: `{trigger.address}`
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							$state.supply = $state.supply + $res.delta_s;
+							$state.reserve = $state.reserve + $res.delta_reserve;
+							$state.coef = $state.coef * $res.coef_multiplier;
+							var['state'] =  $state;
+							response['fee%'] = round($res.fee_percent, 4) || '%';
+						}`
+					}
+				]
+			},
+
+		]
+	}
+}
