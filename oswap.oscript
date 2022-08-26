@@ -572,6 +572,15 @@ track votes as normalized VP:
 				init: `{
 					$name = trigger.data.name;
 					$value = trigger.data.value;
+					if ($name == 'proposal'){
+						$num = trigger.data.num;
+						require($num, "no proposal number");
+						$proposal = var['proposal_' || $num];
+						require($proposal, "no such proposal");
+						$full_name = $name||$num;
+					}
+					else
+						$full_name = $name;
 					if (exists($value)){
 						if ($name == 'swap_fee')
 							require($value >= 0 AND $value < 1, "invalid value");
@@ -590,18 +599,13 @@ track votes as normalized VP:
 						else if ($name == 'challenging_period')
 							require(is_integer($value) AND $value > 0, "invalid value");
 						else if ($name == 'proposal'){
-							$num = trigger.data.num;
-							require($num, "no proposal number");
 							require($value == 'yes' OR $value == 'no', "invalid value");
-							$proposal = var['proposal_' || $num];
-							require($proposal, "no such proposal");
 							require(parse_date($proposal.expiry) > timestamp, "the proposal has expired");
 							require(!$proposal.result, "the proposal has already been decided upon");
 						}
 						else
 							bounce("unknown variable");
 					}
-					$full_name = $name != 'proposal' ? $name : $name||$num;
 					$vote = var['user_value_votes_'||$user_address||'_'||$full_name];
 					$vp = $user.normalized_vp;
 					$leader = var['leader_'||$full_name] OTHERWISE {vp: 0};
