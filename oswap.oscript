@@ -608,17 +608,17 @@ track votes as normalized VP:
 					}
 					$vote = var['user_value_votes_'||$user_address||'_'||$full_name];
 					$vp = $user.normalized_vp;
-					$leader = var['leader_'||$full_name] OTHERWISE {vp: 0};
+					$leader = var['leader_'||$full_name] OTHERWISE {};
+					$leader_vp = exists($leader.value) ? var['value_votes_'||$full_name||'_'||$leader.value] : 0;
 					if (exists($value)){
 						$added_vp = $vp - ($vote AND $vote.value == $value ? $vote.vp : 0);
 						$new_vp = var['value_votes_'||$full_name||'_'||$value] + $added_vp;
-						if ((!exists($leader.value) OR $leader.value != $value) AND $new_vp > $leader.vp){
-							$leader.vp = $new_vp;
+						if ((!exists($leader.value) OR $leader.value != $value) AND $new_vp > $leader_vp){
 							$leader.value = $value;
 							$leader.flip_ts = timestamp;
 							$bLeaderChanged = true;
 						}
-						$bProposalJustFinished = $leader.vp > $state.total_normalized_vp/2 AND $name == 'proposal' AND !$proposal.result;
+						$bProposalJustFinished = $new_vp > $state.total_normalized_vp/2 AND $name == 'proposal' AND !$proposal.result;
 						if ($bProposalJustFinished)
 							$proposal.result = $leader.value;
 					}
@@ -650,7 +650,7 @@ track votes as normalized VP:
 								};
 
 								// commit token params
-								if ($name != 'proposal' AND $is_new_value() AND ($leader.vp > $state.total_normalized_vp/2 OR timestamp > $leader.flip_ts + $challenging_period AND $name != 'challenging_period')){
+								if ($name != 'proposal' AND $is_new_value() AND ($new_vp > $state.total_normalized_vp/2 OR timestamp > $leader.flip_ts + $challenging_period AND $name != 'challenging_period')){
 									var[$name] = $leader.value;
 								}
 								// commit proposals
