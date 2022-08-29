@@ -606,12 +606,12 @@ track votes as normalized VP:
 						else
 							bounce("unknown variable");
 					}
-					$vote = var['user_value_votes_'||$user_address||'_'||$full_name];
+					$prev_vote = var['user_value_votes_'||$user_address||'_'||$full_name];
 					$vp = $user.normalized_vp;
 					$leader = var['leader_'||$full_name] OTHERWISE {};
 					$leader_vp = exists($leader.value) ? var['value_votes_'||$full_name||'_'||$leader.value] : 0;
 					if (exists($value)){
-						$added_vp = $vp - ($vote AND $vote.value == $value ? $vote.vp : 0);
+						$added_vp = $vp - ($prev_vote AND $prev_vote.value == $value ? $prev_vote.vp : 0);
 						$new_vp = var['value_votes_'||$full_name||'_'||$value] + $added_vp;
 						if ((!exists($leader.value) OR $leader.value != $value) AND $new_vp > $leader_vp){
 							$leader.value = $value;
@@ -640,8 +640,8 @@ track votes as normalized VP:
 					{
 						app: 'state',
 						state: `{
-							if ($vote)
-								var['value_votes_'||$full_name||'_'||$vote.value] -= $vote.vp;
+							if ($prev_vote)
+								var['value_votes_'||$full_name||'_'||$prev_vote.value] -= $prev_vote.vp;
 							if (exists($value)){
 								var['value_votes_'||$full_name||'_'||$value] += $vp;
 								if ($bLeaderChanged)
