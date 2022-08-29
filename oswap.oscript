@@ -445,7 +445,7 @@ track votes as normalized VP:
 							}
 							if ($bWithdrawLpReward)
 								$lp.reward = 0;
-							var[$lp_key] = $bWithdraw ? false : $lp;
+							var[$lp_key] = $bWithdraw AND $lp.balance == 0 ? false : $lp;
 							var['pool_'||$pool_asset] = $pool;
 							var['state'] = $state;
 						}`
