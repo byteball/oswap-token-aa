@@ -18,7 +18,7 @@ track votes as normalized VP:
 		$initial_s0 = 1e13;
 
 
-		$lib_aa = 'SMUE77YPLHAC3ICWVZFHTWBVCETUXLWR';
+		$lib_aa = 'WAYE6CMB27GY4NVKZKEBENXM2GG3DZSH';
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
 		$year = 31104000; // 360 * 24 * 3600;
 
@@ -36,131 +36,44 @@ track votes as normalized VP:
 		$get_oracle = () => $get_param('oracle', 'ORACLEADDRESS');
 		$get_challenging_period = () => $get_param('challenging_period', 432000); // 5 days
 
-		$get_reserve_by_state = ($s, $state) => $state.coef * $s * $state.s0 / ($state.s0 - $s);
-
 		$get_tvl = () => data_feed[[oracles=$get_oracle(), feed_name='TVL', ifnone=0]];
 
 		$get_appreciation_rate = () => $get_base_rate() * $get_tvl() / $get_base_tvl();
-		$get_tokens_by_state = ($r, $state) => 1 / (1/$state.s0 + $state.coef/$r);
-		$get_price_by_state = ($s, $state) => $state.coef * ($state.s0 / ($state.s0 - $s))^2; // derivative
 
-		$get_appreciation_result = ($state) => {
-			$elapsed_time = timestamp - $state.last_ts;
-		//	log('elapsed', $elapsed_time);
-			$r = $state.reserve;
-			$s = $state.supply;
-			$s0 = $state.s0;
-			if ($s == 0 OR $elapsed_time == 0)
-				return {new_s0: $s0, coef_multiplier: 1};
-			$p = $get_price_by_state($s, $state);
-			$new_p = $p * (1 +  $elapsed_time/$year * $get_appreciation_rate());
-			$new_s0 = $s + 1 / ($new_p/$r - 1/$s);
-			require($new_s0 > 0, "appreciation new s0 = "||$new_s0);
-			$coef_multiplier = $s0/$new_s0 * ($new_s0 - $s)/($s0 - $s); //   < 1
-			{
-				new_s0: $new_s0,
-				coef_multiplier: $coef_multiplier,
-			}
-		};
 
 		$apply_appreciation = ($state) => {
-			$appr_res = $get_appreciation_result($state);
-			$state.s0 = $appr_res.new_s0;
-			$state.coef = $state.coef * $appr_res.coef_multiplier;
-			$state.last_ts = timestamp;
+			($lib_aa||'')#0.$apply_appreciation($state, $get_appreciation_rate());
 		};
 
 
 		$get_reserve = ($s) => {
 			$state = var['state'];
 			$apply_appreciation($state);
-			$get_reserve_by_state(exists($s) ? $s : $s, $state);
+			($lib_aa||'')#0.$get_reserve_by_state(exists($s) ? $s : $s, $state);
 		};
 
 		$get_tokens = ($r) => {
 			$state = var['state'];
 			$apply_appreciation($state);
-			$get_tokens_by_state(exists($r) ? $r : $state.reserve, $state)
+			($lib_aa||'')#0.$get_tokens_by_state(exists($r) ? $r : $state.reserve, $state)
 		};
 		
 		$get_price = ($s) => {
 			$state = var['state'];
 			$apply_appreciation($state);
-			$get_price_by_state(exists($s) ? $s : $state.supply, $state)
+			($lib_aa||'')#0.$get_price_by_state(exists($s) ? $s : $state.supply, $state)
 		};
 
 
-
-
-		$get_exchange_result_by_state = ($tokens, $delta_r, $state) => {
-			require($tokens > 0 AND $delta_r == 0 OR $tokens == 0 AND $delta_r > 0, "invalid input");
-
-			$r = $state.reserve;
-			$s = $state.supply;
-			$p = $get_price_by_state($s, $state);
-			log('p = ', $p);
-
-			$swap_fee_rate = $get_swap_fee();
-			$arb_profit_tax_rate = $get_arb_profit_tax();
-
-			if ($tokens) { // selling tokens
-				$new_s = $s - $tokens;
-				$net_new_r = $get_reserve_by_state($new_s, $state);
-				$swap_fee = $swap_fee_rate * ($r - $net_new_r);
-			}
-			else { // buying tokens
-				$gross_new_r = $r + $delta_r;
-				$swap_fee = $swap_fee_rate * $delta_r;
-				$new_r1 = $r + $delta_r - $swap_fee;
-				$new_s1 = $get_tokens_by_state($new_r1, $state);
-				log('new_s1 = ', $new_s1);
-				$new_p1 = $get_price_by_state($new_s1, $state);
-				log('new_p1 = ', $new_p1);
-				$arb_profit_tax = $arb_profit_tax_rate * ($new_p1 - $p) * ($new_s1 - $s) / 2;
-
-				$net_new_r = $new_r1 - $arb_profit_tax;
-				$new_s = floor($get_tokens_by_state($net_new_r, $state));
-				log('new_s = ', $new_s);
-				$delta_s = $new_s - $s;
-			}
-
-			$new_p = $get_price_by_state($new_s, $state);
-			log('new_p = ', $new_p);
-			
-			if ($tokens)
-				$arb_profit_tax = $arb_profit_tax_rate * abs(($new_p - $p) * ($new_s - $s) / 2);
-			$total_fee = $swap_fee + $arb_profit_tax;
-
-			if ($tokens){
-				$gross_new_r = ceil($net_new_r + $total_fee);
-				$payout = $r - $gross_new_r;
-				$fee_percent = $total_fee / ($r - $net_new_r) * 100;
-			}
-			else
-				$fee_percent = $total_fee / $delta_r * 100;
-
-			$coef_multiplier = $gross_new_r / $net_new_r;
-
-			{
-				payout: $payout,
-				delta_s: $tokens ? -$tokens : $delta_s,
-				old_reserve: $r,
-				new_reserve: $gross_new_r,
-				delta_reserve: $gross_new_r - $r,
-				old_price: $p,
-				new_price: $new_p,
-				swap_fee: $swap_fee,
-				arb_profit_tax: $arb_profit_tax,
-				total_fee: $total_fee,
-				fee_percent: $fee_percent,
-				coef_multiplier: $coef_multiplier,
-			}
-		};
 
 		$get_exchange_result = ($tokens, $delta_r) => {
 			$state = var['state'];
+			$props = {
+				swap_fee: $get_swap_fee(),
+				arb_profit_tax: $get_arb_profit_tax(),
+			};
 			$apply_appreciation($state);
-			$get_exchange_result_by_state($tokens, $delta_r, $state)
+			($lib_aa||'')#0.$get_exchange_result_by_state($tokens, $delta_r, $state, $props)
 		};
 
 
@@ -214,6 +127,8 @@ track votes as normalized VP:
 		$props = {
 			inflation_rate: $get_inflation_rate(),
 			stakers_share: $get_stakers_share(),
+			swap_fee: $get_swap_fee(),
+			arb_profit_tax: $get_arb_profit_tax(),
 		};
 
 		$challenging_period = $get_challenging_period();
@@ -713,7 +628,7 @@ track votes as normalized VP:
 
 					$reserve_asset_amount = $tokens ? 0 : trigger.output[[asset=$reserve_asset]] - $full_network_fee; // subtract a fee to compensate for network fees
 					
-					$res = $get_exchange_result_by_state($tokens, $reserve_asset_amount, $state);
+					$res = $lib#0.$get_exchange_result_by_state($tokens, $reserve_asset_amount, $state, $props);
 					
 					response['price'] = $res.new_price;
 					response['swap_fee'] = $res.swap_fee;

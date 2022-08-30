@@ -128,6 +128,110 @@
 		};
 
 
+
+
+		$pow2 = $x => $x*$x;
+
+
+		$get_reserve_by_state = ($s, $state) => $state.coef * $s * $state.s0 / ($state.s0 - $s);
+		$get_tokens_by_state = ($r, $state) => 1 / (1/$state.s0 + $state.coef/$r);
+		$get_price_by_state = ($s, $state) => $state.coef * $pow2($state.s0 / ($state.s0 - $s)); // derivative
+
+
+		$get_appreciation_result = ($state, $appreciation_rate) => {
+			$elapsed_time = timestamp - $state.last_ts;
+		//	log('elapsed', $elapsed_time);
+			$r = $state.reserve;
+			$s = $state.supply;
+			$s0 = $state.s0;
+			if ($s == 0 OR $elapsed_time == 0)
+				return {new_s0: $s0, coef_multiplier: 1};
+			$p = $get_price_by_state($s, $state);
+			$new_p = $p * (1 +  $elapsed_time/$year * $appreciation_rate);
+			$new_s0 = $s + 1 / ($new_p/$r - 1/$s);
+			require($new_s0 > 0, "appreciation new s0 = "||$new_s0);
+			$coef_multiplier = $s0/$new_s0 * ($new_s0 - $s)/($s0 - $s); //   < 1
+			{
+				new_s0: $new_s0,
+				coef_multiplier: $coef_multiplier,
+			}
+		};
+
+		$apply_appreciation = ($state, $appreciation_rate) => {
+			$appr_res = $get_appreciation_result($state, $appreciation_rate);
+			$state.s0 = $appr_res.new_s0;
+			$state.coef = $state.coef * $appr_res.coef_multiplier;
+			$state.last_ts = timestamp;
+		};
+
+
+
+
+		$get_exchange_result_by_state = ($tokens, $delta_r, $state, $props) => {
+			require($tokens > 0 AND $delta_r == 0 OR $tokens == 0 AND $delta_r > 0, "invalid input");
+
+			$r = $state.reserve;
+			$s = $state.supply;
+			$p = $get_price_by_state($s, $state);
+		//	log('p = ', $p);
+
+			$swap_fee_rate = $props.swap_fee;
+			$arb_profit_tax_rate = $props.arb_profit_tax;
+
+			if ($tokens) { // selling tokens
+				$new_s = $s - $tokens;
+				$net_new_r = $get_reserve_by_state($new_s, $state);
+				$swap_fee = $swap_fee_rate * ($r - $net_new_r);
+			}
+			else { // buying tokens
+				$gross_new_r = $r + $delta_r;
+				$swap_fee = $swap_fee_rate * $delta_r;
+				$new_r1 = $r + $delta_r - $swap_fee;
+				$new_s1 = $get_tokens_by_state($new_r1, $state);
+			//	log('new_s1 = ', $new_s1);
+				$new_p1 = $get_price_by_state($new_s1, $state);
+			//	log('new_p1 = ', $new_p1);
+				$arb_profit_tax = $arb_profit_tax_rate * ($new_p1 - $p) * ($new_s1 - $s) / 2;
+
+				$net_new_r = $new_r1 - $arb_profit_tax;
+				$new_s = floor($get_tokens_by_state($net_new_r, $state));
+			//	log('new_s = ', $new_s);
+				$delta_s = $new_s - $s;
+			}
+
+			$new_p = $get_price_by_state($new_s, $state);
+		//	log('new_p = ', $new_p);
+			
+			if ($tokens)
+				$arb_profit_tax = $arb_profit_tax_rate * abs(($new_p - $p) * ($new_s - $s) / 2);
+			$total_fee = $swap_fee + $arb_profit_tax;
+
+			if ($tokens){
+				$gross_new_r = ceil($net_new_r + $total_fee);
+				$payout = $r - $gross_new_r;
+				$fee_percent = $total_fee / ($r - $net_new_r) * 100;
+			}
+			else
+				$fee_percent = $total_fee / $delta_r * 100;
+
+			$coef_multiplier = $gross_new_r / $net_new_r;
+
+			{
+				payout: $payout,
+				delta_s: $tokens ? -$tokens : $delta_s,
+				old_reserve: $r,
+				new_reserve: $gross_new_r,
+				delta_reserve: $gross_new_r - $r,
+				old_price: $p,
+				new_price: $new_p,
+				swap_fee: $swap_fee,
+				arb_profit_tax: $arb_profit_tax,
+				total_fee: $total_fee,
+				fee_percent: $fee_percent,
+				coef_multiplier: $coef_multiplier,
+			}
+		};
+
 	}`,
 	messages: [{
 		app: 'state',
