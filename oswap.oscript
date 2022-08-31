@@ -304,20 +304,27 @@ track votes as normalized VP:
 						$bDeposit = true;
 						$pool_asset = trigger.output[[asset!='base']].asset;
 						require($pool_asset != 'ambiguous' AND $pool_asset != 'none' AND $pool_asset != $asset, "invalid pool asset");
+						$full_pool_asset = $pool_asset;
 						$deposit_amount = trigger.output[[asset!='base']];
 						$delta_balance = $deposit_amount;
 					}
 					else if (trigger.data.pool_asset) {
 						$pool_asset = trigger.data.pool_asset;
-						if (trigger.data.withdraw)
+						$deposit_aa = trigger.data.deposit_aa; // optional: the tokens are stored on deposit_aa rather than our AA
+						$full_pool_asset = $pool_asset || ($deposit_aa ? '_'||$deposit_aa : '');
+						if (trigger.data.withdraw){
 							$bWithdraw = true;
+							require(!$deposit_aa, "can't withdraw to deposit AA");
+						}
 					//	else if (trigger.data.withdraw_lp_reward)
 							$bWithdrawLpReward = true;
 					}
-					$pool = var['pool_'||$pool_asset];
+					$pool = var['pool_'||$full_pool_asset];
 					require($pool, "unknown asset");
-					$lp_key = 'lp_' || $user_address || '_' || $pool.asset_key;
+					$lp_key = 'lp_' || ($deposit_aa OTHERWISE $user_address) || '_' || $pool.asset_key;
 					$lp = var[$lp_key] OTHERWISE {balance: 0, last_pool_emissions: 0, last_distribution_ts: 0, reward: 0};
+					if ($deposit_aa)
+						$lp.balance = balance[$deposit_aa][$pool_asset];
 					if (trigger.data.pool_asset){
 						require($lp.balance > 0, "you have no balance in this pool asset");
 						if ($bWithdraw){
@@ -327,7 +334,7 @@ track votes as normalized VP:
 						}
 					}
 					$pool_vps = var['pool_vps_'||$pool.group_key] OTHERWISE {};
-					$total_lp_balance = var['pool_asset_balance_' || $pool.asset_key];
+					$total_lp_balance = $deposit_aa ? $lp.balance : var['pool_asset_balance_' || $pool.asset_key];
 					$lib#0.$distribute_lp_emissions($state, $lp, $pool, $pool_vps, $total_lp_balance, $props);
 				}`,
 				messages: [
@@ -345,7 +352,7 @@ track votes as normalized VP:
 						payload: {
 							asset: `{$asset}`,
 							outputs: [
-								{address: "{$to}", amount: "{ floor($lp.reward) }"}  // fractional part is lost
+								{address: "{$deposit_aa OTHERWISE $to}", amount: "{ floor($lp.reward) }"}  // fractional part is lost
 							]
 						}
 					},
@@ -361,7 +368,7 @@ track votes as normalized VP:
 							if ($bWithdrawLpReward)
 								$lp.reward = 0;
 							var[$lp_key] = $bWithdraw AND $lp.balance == 0 ? false : $lp;
-							var['pool_'||$pool_asset] = $pool;
+							var['pool_'||$full_pool_asset] = $pool;
 							var['state'] = $state;
 						}`
 					}
@@ -404,9 +411,13 @@ track votes as normalized VP:
 				init: `{
 					$sign = trigger.data.vote_whitelist ? 1 : -1;
 					$pool_asset = trigger.data.pool_asset;
-					$wl_votes = var['wl_votes_'||$pool_asset] OTHERWISE {vp: 0, flip_ts: 0};
+					$deposit_aa = trigger.data.deposit_aa;
+					if ($deposit_aa)
+						require(is_aa($deposit_aa), "deposit AA is not an AA");
+					$full_pool_asset = $pool_asset || ($deposit_aa ? '_'||$deposit_aa : '');
+					$wl_votes = var['wl_votes_'||$full_pool_asset] OTHERWISE {vp: 0, flip_ts: 0};
 
-					$old_vp = var['user_wl_votes_'||$user_address||'_'||$pool_asset];
+					$old_vp = var['user_wl_votes_'||$user_address||'_'||$full_pool_asset];
 					$new_vp = $user.normalized_vp * $sign;
 					$added_vp = $new_vp - $old_vp;
 				}`,
@@ -414,17 +425,17 @@ track votes as normalized VP:
 					{
 						app: 'state',
 						state: `{
-							var['user_wl_votes_'||$user_address||'_'||$pool_asset] += $added_vp;
+							var['user_wl_votes_'||$user_address||'_'||$full_pool_asset] += $added_vp;
 
 							$new_total_vp = $wl_votes.vp + $added_vp;
 							if ($new_total_vp AND $wl_votes.vp * $new_total_vp <= 0) // flipped the sign
 								$wl_votes.flip_ts = timestamp;
 							$wl_votes.vp = $new_total_vp;
-							var['wl_votes_'||$pool_asset] = $wl_votes;
+							var['wl_votes_'||$full_pool_asset] = $wl_votes;
 
 							// commit if have the majority or stayed unchallenged long enough
 							if (abs($new_total_vp) > $state.total_normalized_vp/2 OR timestamp > $wl_votes.flip_ts + $challenging_period OR $state.total_normalized_vp == 0){
-								$pool = var['pool_'||$pool_asset];
+								$pool = var['pool_'||$full_pool_asset];
 								if ($new_total_vp > 0 OR $state.total_normalized_vp == 0){ // add to the whitelist (or re-add)
 									if (!$pool){ // create a new pool
 										var['last_asset_num'] += 1;
@@ -474,7 +485,7 @@ track votes as normalized VP:
 										response['message'] = 'blacklisted';
 									}
 								}
-								var['pool_'||$pool_asset] = $new_pool OTHERWISE $pool;
+								var['pool_'||$full_pool_asset] = $new_pool OTHERWISE $pool;
 							}
 						}`
 					}
