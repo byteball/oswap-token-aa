@@ -113,7 +113,8 @@ track votes as normalized VP:
 		if (trigger.data.to AND !is_valid_address(trigger.data.to))
 			bounce("bad to address");
 		$to = trigger.data.to OTHERWISE trigger.address;
-		$user_address = (trigger.data.unstake OR trigger.data.withdraw_staking_reward OR trigger.data.withdraw_lp_reward OR trigger.data.withdraw OR trigger.data.vote_shares OR trigger.data.vote_whitelist OR trigger.data.vote_blacklist OR trigger.data.vote_value) ? trigger.address : $to;
+	//	$user_address = (trigger.data.stake OR trigger.data.unstake OR trigger.data.withdraw_staking_reward OR trigger.data.withdraw_lp_reward OR trigger.data.withdraw OR trigger.data.vote_shares OR trigger.data.vote_whitelist OR trigger.data.vote_blacklist OR trigger.data.vote_value) ? trigger.address : $to;
+		$user_address = trigger.data.deposit ? $to : trigger.address;
 
 		$user = var['user_' || $user_address] OTHERWISE {
 			balance: 0,
