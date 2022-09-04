@@ -108,7 +108,7 @@
 					$totals.max = abs($delta_vp);
 				if (exists($pool_vps[$group_key1][$pool_asset_key]))
 					$group_key = $group_key1;
-				else if (exists($pool_vps[$group_key2][$pool_asset_key]))
+				else if ($group_key2 AND exists($pool_vps[$group_key2][$pool_asset_key]))
 					$group_key = $group_key2;
 				else
 					bounce("pool asset key "||$pool_asset_key||" not found in any of the two groups");
