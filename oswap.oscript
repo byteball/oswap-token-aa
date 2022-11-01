@@ -18,7 +18,7 @@ track votes as normalized VP:
 		$initial_s0 = 1e13;
 
 
-		$lib_aa = '7RKGGFDQJLXEI7TYWCB6Q6254AIYSDDL';
+		$lib_aa = 'EYO3WLEOYIIIC4N6MEST5Q2UWUZS435A';
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
 		$year = 31104000; // 360 * 24 * 3600;
 
@@ -662,7 +662,7 @@ track votes as normalized VP:
 						payload: {
 							asset: `{$asset}`,
 							outputs: [
-								{address: "{$to}", amount: "{ $res.delta_s }"}
+								{address: "{$to}", amount: "{ floor($res.delta_s) }"}
 							]
 						}
 					},

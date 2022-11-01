@@ -536,7 +536,41 @@ describe('Various trades with the token', function () {
 		this.checkCurve()
 	})
 
+	it('Alice buys more tokens', async () => {
+		const amount = 10e9
+		const { unit, error } = await this.alice.sendMulti({
+			outputs_by_asset: {
+				[this.reserve_asset]: [{ address: this.oswap_aa, amount: amount + this.network_fee_on_top }],
+				...this.bounce_fees
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
 
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+	//	console.log('logs', JSON.stringify(response.logs, null, 2))
+		console.log(response.response.error)
+	//	await this.network.witnessUntilStable(response.response_unit)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.validUnit
+
+		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
+		console.log(Utils.getExternalPayments(unitObj))
+	/*	expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+			{
+				asset: this.asset,
+				address: this.aliceAddress,
+				amount: new_issued_shares,
+			},
+		])*/
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		this.state = vars.state
+
+		this.checkCurve()
+	})
 
 
 	after(async () => {

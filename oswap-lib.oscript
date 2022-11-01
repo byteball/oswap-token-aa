@@ -194,7 +194,7 @@
 				$arb_profit_tax = $arb_profit_tax_rate * ($new_p1 - $p) * ($new_s1 - $s) / 2;
 
 				$net_new_r = $new_r1 - $arb_profit_tax;
-				$new_s = floor($get_tokens_by_state($net_new_r, $state));
+				$new_s = $get_tokens_by_state($net_new_r, $state);
 			//	log('new_s = ', $new_s);
 				$delta_s = $new_s - $s;
 			}
