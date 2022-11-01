@@ -116,6 +116,11 @@ track votes as normalized VP:
 	//	$user_address = (trigger.data.stake OR trigger.data.unstake OR trigger.data.withdraw_staking_reward OR trigger.data.withdraw_lp_reward OR trigger.data.withdraw OR trigger.data.vote_shares OR trigger.data.vote_whitelist OR trigger.data.vote_blacklist OR trigger.data.vote_value) ? trigger.address : $to;
 		$user_address = trigger.data.deposit ? $to : trigger.address;
 
+		if (trigger.data.pool_asset)
+			require(asset[trigger.data.pool_asset].exists, "bad pool asset");
+		if (trigger.data.deposit_aa)
+			require(is_aa(trigger.data.deposit_aa), "deposit AA is not an AA");
+
 		$user = var['user_' || $user_address] OTHERWISE {
 			balance: 0,
 			reward: 0,
@@ -413,8 +418,6 @@ track votes as normalized VP:
 					$sign = trigger.data.vote_whitelist ? 1 : -1;
 					$pool_asset = trigger.data.pool_asset;
 					$deposit_aa = trigger.data.deposit_aa;
-					if ($deposit_aa)
-						require(is_aa($deposit_aa), "deposit AA is not an AA");
 					$full_pool_asset = $pool_asset || ($deposit_aa ? '_'||$deposit_aa : '');
 					$wl_votes = var['wl_votes_'||$full_pool_asset] OTHERWISE {vp: 0, flip_ts: 0};
 
