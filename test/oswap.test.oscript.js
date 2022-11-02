@@ -328,6 +328,65 @@ describe('Various trades with the token', function () {
 		this.checkCurve()
 	})
 
+	it('Alice changes swap fee', async () => {
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				vote_value: 1,
+				name: 'swap_fee',
+				value: 0.005
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response.responseVars.new_leader).to.be.eq(0.005)
+		expect(response.response.responseVars.committed).to.be.eq(0.005)
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		expect(vars['value_votes_swap_fee_0.005']).to.be.eq(this.alice_vp)
+		expect(vars['user_value_votes_' + this.aliceAddress + '_swap_fee']).to.be.deep.eq({ value: 0.005, vp: this.alice_vp })
+		expect(vars['swap_fee']).to.be.eq(0.005)
+		expect(vars['leader_swap_fee']).to.be.deep.eq({ value: 0.005, flip_ts: response.timestamp })
+
+		this.checkCurve()
+	})
+	
+	it('Alice changes swap fee again', async () => {
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				vote_value: 1,
+				name: 'swap_fee',
+				value: 0.006
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response.responseVars.new_leader).to.be.eq(0.006)
+		expect(response.response.responseVars.committed).to.be.eq(0.006)
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		expect(vars['value_votes_swap_fee_0.005']).to.be.eq(0)
+		expect(vars['value_votes_swap_fee_0.006']).to.be.eq(this.alice_vp)
+		expect(vars['user_value_votes_' + this.aliceAddress + '_swap_fee']).to.be.deep.eq({ value: 0.006, vp: this.alice_vp })
+		expect(vars['swap_fee']).to.be.eq(0.006)
+		expect(vars['leader_swap_fee']).to.be.deep.eq({ value: 0.006, flip_ts: response.timestamp })
+
+		this.checkCurve()
+	})
+	
 	it('Alice claims reward', async () => {
 		await this.timetravel('180d')
 		const { unit, error } = await this.alice.triggerAaWithData({

@@ -539,7 +539,8 @@ track votes as normalized VP:
 					$prev_vote = var['user_value_votes_'||$user_address||'_'||$full_name];
 					$vp = $user.normalized_vp;
 					$leader = var['leader_'||$full_name] OTHERWISE {};
-					$leader_vp = exists($leader.value) ? var['value_votes_'||$full_name||'_'||$leader.value] : 0;
+					$subtracted_from_leader_vp = ($prev_vote AND exists($leader.value) AND $prev_vote.value == $leader.value AND $value != $prev_vote.value) ? $prev_vote.vp : 0; // removing my vote from the current leader
+					$leader_vp = exists($leader.value) ? var['value_votes_'||$full_name||'_'||$leader.value] - $subtracted_from_leader_vp : 0;
 					if (exists($value)){
 						$added_vp = $vp - ($prev_vote AND $prev_vote.value == $value ? $prev_vote.vp : 0);
 						$new_vp = var['value_votes_'||$full_name||'_'||$value] + $added_vp;
@@ -548,6 +549,7 @@ track votes as normalized VP:
 							$leader.flip_ts = timestamp;
 							$new_leader_vp = $new_vp;
 							$bLeaderChanged = true;
+							response['new_leader'] = $value;
 						}
 						else
 							$new_leader_vp = $leader_vp;
@@ -585,6 +587,7 @@ track votes as normalized VP:
 								// commit token params
 								if ($name != 'proposal' AND $is_new_value() AND ($new_leader_vp > $state.total_normalized_vp/2 OR timestamp > $leader.flip_ts + $challenging_period AND $name != 'challenging_period')){
 									var[$name] = $leader.value;
+									response['committed'] = $leader.value;
 								}
 								// commit proposals
 								if ($bProposalJustFinished){
@@ -592,6 +595,7 @@ track votes as normalized VP:
 									if ($proposal.result == 'yes'){
 										$lib#0.$subtract_grant($state, $proposal.amount);
 										var['state'] = $state;
+										response['committed'] = 'proposal_' || $num;
 									}
 								}
 							}
