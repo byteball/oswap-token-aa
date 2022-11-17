@@ -18,7 +18,7 @@ track votes as normalized VP:
 		$initial_s0 = 1e13;
 
 
-		$lib_aa = 'EYO3WLEOYIIIC4N6MEST5Q2UWUZS435A';
+		$lib_aa = '7HNGSPXDI672NI3RB7SPKHJIPHQBTNZ4';
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
 		$year = 31104000; // 360 * 24 * 3600;
 

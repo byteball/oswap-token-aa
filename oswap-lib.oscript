@@ -185,13 +185,13 @@
 			}
 			else { // buying tokens
 				$gross_new_r = $r + $delta_r;
-				$swap_fee = $swap_fee_rate * $delta_r;
+				$swap_fee = $r ? $swap_fee_rate * $delta_r : 0;
 				$new_r1 = $r + $delta_r - $swap_fee;
 				$new_s1 = $get_tokens_by_state($new_r1, $state);
 			//	log('new_s1 = ', $new_s1);
 				$new_p1 = $get_price_by_state($new_s1, $state);
 			//	log('new_p1 = ', $new_p1);
-				$arb_profit_tax = $arb_profit_tax_rate * ($new_p1 - $p) * ($new_s1 - $s) / 2;
+				$arb_profit_tax = $r ? $arb_profit_tax_rate * ($new_p1 - $p) * ($new_s1 - $s) / 2 : 0;
 
 				$net_new_r = $new_r1 - $arb_profit_tax;
 				$new_s = $get_tokens_by_state($net_new_r, $state);
