@@ -114,7 +114,7 @@ track votes as normalized VP:
 			bounce("bad to address");
 		$to = trigger.data.to OTHERWISE trigger.address;
 	//	$user_address = (trigger.data.stake OR trigger.data.unstake OR trigger.data.withdraw_staking_reward OR trigger.data.withdraw_lp_reward OR trigger.data.withdraw OR trigger.data.vote_shares OR trigger.data.vote_whitelist OR trigger.data.vote_blacklist OR trigger.data.vote_value) ? trigger.address : $to;
-		$user_address = trigger.data.deposit ? $to : trigger.address;
+		$user_address = (trigger.data.deposit OR trigger.data.stake) ? $to : trigger.address;
 
 		if (trigger.data.pool_asset)
 			require(asset[trigger.data.pool_asset].exists, "bad pool asset");
@@ -174,7 +174,7 @@ track votes as normalized VP:
 			// stake tokens
 			// the newly added VP is split among pools in group group_key according to percentages
 			{
-				if: `{ $asset AND (trigger.output[[asset=$asset]] > 0 OR trigger.data.stake_reward AND $to == trigger.address) AND trigger.data.stake AND trigger.data.term AND trigger.data.group_key AND trigger.data.percentages }`,
+				if: `{ $asset AND (trigger.output[[asset=$asset]] > 0 OR trigger.data.stake_reward) AND ($to == trigger.address OR $to == trigger.initial_address) AND trigger.data.stake AND trigger.data.term AND trigger.data.group_key AND trigger.data.percentages }`,
 				init: `{
 					$term = trigger.data.term; // in days
 					$four_years = 4 * 360;
