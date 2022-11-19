@@ -157,6 +157,24 @@ describe('Various trades with the token', function () {
 
 	})
 
+	it('Bob tries to whitelist pool2', async () => {
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				vote_whitelist: 1,
+				pool_asset: this.pool2,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.eq("only one asset can be added without voting")
+		expect(response.bounced).to.be.true
+	})
+
 
 
 	it('Alice buys tokens', async () => {
