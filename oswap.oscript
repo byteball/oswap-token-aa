@@ -18,7 +18,7 @@ track votes as normalized VP:
 		$initial_s0 = 1e13;
 
 
-		$lib_aa = '7HNGSPXDI672NI3RB7SPKHJIPHQBTNZ4';
+		$lib_aa = '6LNBIO4TZIZFWNCHCNK4MRRDOQXMEYDT';
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
 		$year = 31104000; // 360 * 24 * 3600;
 
@@ -73,7 +73,7 @@ track votes as normalized VP:
 				arb_profit_tax: $get_arb_profit_tax(),
 			};
 			$apply_appreciation($state);
-			($lib_aa||'')#0.$get_exchange_result_by_state($tokens, $delta_r, $state, $props)
+			($lib_aa||'')#0.$get_exchange_result_by_state($tokens, $delta_r, 'ADDRESS', $state, $props)
 		};
 
 
@@ -102,6 +102,20 @@ track votes as normalized VP:
 			supply: 0,
 			reserve: 0,
 			last_ts: timestamp,
+			last_buy: {
+				ts: timestamp,
+				delta_s: 0,
+				initial_p: 0,
+				tax: 0,
+				address: '',
+			},
+			last_sell: {
+				ts: timestamp,
+				delta_s: 0,
+				initial_p: 0,
+				tax: 0,
+				address: '',
+			},
 			total_normalized_vp: 0,
 			stakers_emissions: 0,
 			lp_emissions: 0,
@@ -677,7 +691,7 @@ track votes as normalized VP:
 
 					$reserve_asset_amount = $tokens ? 0 : trigger.output[[asset=$reserve_asset]] - $full_network_fee; // subtract a fee to compensate for network fees
 					
-					$res = $lib#0.$get_exchange_result_by_state($tokens, $reserve_asset_amount, $state, $props);
+					$res = $lib#0.$get_exchange_result_by_state($tokens, $reserve_asset_amount, trigger.initial_address, $state, $props);
 					
 					response['price'] = $res.new_price;
 					response['swap_fee'] = $res.swap_fee;

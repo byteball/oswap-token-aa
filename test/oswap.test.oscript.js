@@ -904,6 +904,7 @@ describe('Various trades with the token', function () {
 	})
 
 	it('Alice buys more tokens', async () => {
+		await this.timetravel('1d')
 		const amount = 10e9
 		const { unit, error } = await this.alice.sendMulti({
 			outputs_by_asset: {

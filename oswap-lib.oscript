@@ -3,6 +3,8 @@
 		
 		$year = 31104000; // 360 * 24 * 3600;
 
+		$trade_merge_period = 1; // seconds
+
 		// increase the supply without changing the price
 		$increase_supply = ($state, $ds) => {
 			$s = $state.supply;
@@ -167,7 +169,7 @@
 
 
 
-		$get_exchange_result_by_state = ($tokens, $delta_r, $state, $props) => {
+		$get_exchange_result_by_state = ($tokens, $delta_r, $trigger_initial_address, $state, $props) => {
 			require($tokens > 0 AND $delta_r == 0 OR $tokens == 0 AND $delta_r > 0, "invalid input");
 
 			$r = $state.reserve;
@@ -178,10 +180,18 @@
 			$swap_fee_rate = $props.swap_fee;
 			$arb_profit_tax_rate = $props.arb_profit_tax;
 
+			$key = $tokens ? 'last_sell' : 'last_buy';
+			$last_trade = $state[$key];
+			$bMerge = (timestamp <= $last_trade.ts + $trade_merge_period AND $trigger_initial_address == $last_trade.address);
+			$recent_tax = $bMerge ? $last_trade.tax : 0;
+			$recent_delta_s = $bMerge ? $last_trade.delta_s : 0;
+			$initial_p = $bMerge ? ($tokens ? max($p, $last_trade.initial_p) : min($p, $last_trade.initial_p)) : $p;
+
 			if ($tokens) { // selling tokens
 				$new_s = $s - $tokens;
 				$net_new_r = $get_reserve_by_state($new_s, $state);
 				$swap_fee = $swap_fee_rate * ($r - $net_new_r);
+				$delta_s = -$tokens;
 			}
 			else { // buying tokens
 				$gross_new_r = $r + $delta_r;
@@ -191,7 +201,7 @@
 			//	log('new_s1 = ', $new_s1);
 				$new_p1 = $get_price_by_state($new_s1, $state);
 			//	log('new_p1 = ', $new_p1);
-				$arb_profit_tax = $r ? $arb_profit_tax_rate * ($new_p1 - $p) * ($new_s1 - $s) / 2 : 0;
+				$arb_profit_tax = $r ? $arb_profit_tax_rate * ($new_p1 - $initial_p) * ($new_s1 - $s + $recent_delta_s) / 2 - $recent_tax : 0;
 
 				$net_new_r = $new_r1 - $arb_profit_tax;
 				$new_s = $get_tokens_by_state($net_new_r, $state);
@@ -203,7 +213,9 @@
 		//	log('new_p = ', $new_p);
 			
 			if ($tokens)
-				$arb_profit_tax = $arb_profit_tax_rate * abs(($new_p - $p) * ($new_s - $s) / 2);
+				$arb_profit_tax = $arb_profit_tax_rate * ($initial_p - $new_p) * ($tokens - $recent_delta_s) / 2 - $recent_tax;
+			
+			require($arb_profit_tax >= 0, "arb_profit_tax="||$arb_profit_tax);
 			$total_fee = $swap_fee + $arb_profit_tax;
 
 			if ($tokens){
@@ -216,9 +228,15 @@
 
 			$coef_multiplier = $gross_new_r / $net_new_r;
 
+			$state[$key].delta_s = ($bMerge ? $last_trade.delta_s : 0) + $delta_s;
+			$state[$key].initial_p = $initial_p;
+			$state[$key].tax = $arb_profit_tax;
+			$state[$key].ts = timestamp;
+			$state[$key].address = $trigger_initial_address;
+
 			{
 				payout: $payout,
-				delta_s: $tokens ? -$tokens : $delta_s,
+				delta_s: $delta_s, // negative for selling
 				old_reserve: $r,
 				new_reserve: $gross_new_r,
 				delta_reserve: $gross_new_r - $r,
