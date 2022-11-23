@@ -1,0 +1,191 @@
+{
+	doc_url: "https://oswap.io/initial-sale-pool.json",
+	getters: `{
+		
+		$get_prices = () => {
+			$r = var['total'];
+			$s = params.token_aa#7.$get_tokens($r);
+			$final_price = params.token_aa#7.$get_price($s);
+			$avg_price = $r/$s;
+			{final_price: $final_price, avg_price: $avg_price}
+		};
+
+	}`,
+	init: `{
+
+		$reserve_asset = params.reserve_asset OTHERWISE 'base';
+		$token_aa = params.token_aa;
+
+		$buy_freeze_period = params.buy_freeze_period OTHERWISE 1; // in days
+		$buy_freeze_period_in_seconds = $buy_freeze_period * 24 * 3600;
+		$launch_date = var['launch_date'] OTHERWISE params.launch_date;
+		$launch_ts = parse_date($launch_date);
+
+		
+		// reserve
+		$min_contribution = ($reserve_asset == 'base') ? 99999 : 0;
+		$network_fee = ($reserve_asset == 'base') ? 1000 : 0;
+
+
+		if (trigger.data.to AND !is_valid_address(trigger.data.to))
+			bounce("bad to address");
+		$to = trigger.data.to OTHERWISE trigger.address;
+
+	}`,
+	messages: {
+		cases: [
+
+			// contribute funds to buy tokens
+			{
+				if: `{ trigger.output[[asset=$reserve_asset]] > $min_contribution }`,
+				init: `{
+					require(timestamp < $launch_ts - $buy_freeze_period_in_seconds, "no more deposits accepted");
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							$amount = trigger.output[[asset=$reserve_asset]] - $network_fee;
+							var['user_'||$to] += $amount;
+							var['total'] += $amount;
+							response['added'] = $amount;
+						}`
+					}
+				]
+			},
+
+			// withdraw funds (the price got too high or the user changed one's mind)
+			{
+				if: `{ trigger.data.withdraw }`,
+				init: `{
+					require(timestamp < $launch_ts, "withdrawals not allowed any more");
+					$balance = var['user_'||trigger.address];
+					require($balance, "you have no balance");
+					$amount = trigger.data.amount OTHERWISE $balance;
+					require($amount <= $balance, "amount cannot exceed your balance "||$balance);
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: `{$reserve_asset}`,
+							outputs: [{address: `{trigger.address}`, amount: `{$amount}`}]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var['user_'||trigger.address] -= $amount;
+							var['total'] -= $amount;
+							response['withdrawn'] = $amount;
+						}`
+					}
+				]
+			},
+
+			// buy tokens from oswap AA for the pool
+			{
+				if: `{ trigger.data.buy }`,
+				init: `{
+					require(timestamp >= $launch_ts, "too early");
+					require(!var['tokens'], "already bought");
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: `{$reserve_asset}`,
+							outputs: [{address: `{$token_aa}`, amount: `{var['total'] + $network_fee}`}]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							response['message'] = 'bought';
+						}`
+					}
+				]
+			},
+
+			// accept the bought tokens
+			{
+				if: `{ trigger.address == $token_aa }`,
+				init: `{
+					$asset = var[$token_aa]['asset'];
+					$tokens = trigger.output[[asset=$asset]];
+					require($tokens > 0, "no tokens received");
+					require(!var['tokens'], "already bought");
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							var['tokens'] = $tokens;
+							response['tokens'] = $tokens;
+						}`
+					}
+				]
+			},
+
+			// send the bought tokens to staking
+			{
+				if: `{ trigger.data.stake AND trigger.data.group_key AND trigger.data.percentages }`,
+				init: `{
+					require(var['tokens'], "not bought yet");
+					$balance = var['user_'||trigger.address];
+					require($balance, "you have no balance");
+					$amount = floor($balance / var['total'] * var['tokens']);
+					$asset = var[$token_aa]['asset'];
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: `{$asset}`,
+							outputs: [{address: `{$token_aa}`, amount: `{$amount}`}]
+						}
+					},
+					{
+						app: 'data',
+						payload: {
+							stake: 1,
+							term: `{4*360}`,
+							group_key: `{trigger.data.group_key}`,
+							percentages: `{trigger.data.percentages}`,
+							to: `{trigger.address}`,
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var['user_'||trigger.address] = false;
+							response['sent'] = $amount;
+						}`
+					}
+				]
+			},
+
+			// admin changes the launch date (if admin exists)
+			{
+				if: `{ params.admin_address AND trigger.address == params.admin_address AND trigger.data.launch_date }`,
+				init: `{
+					require(!$launch_ts OR timestamp < $launch_ts, "already launched");
+					$new_launch_ts = parse_date(trigger.data.launch_date);
+					require($new_launch_ts > 0, "invalid date");
+					require(timestamp < $new_launch_ts - $buy_freeze_period_in_seconds, "new launch date should be at least buy freeze period in the future");
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							var['launch_date'] = trigger.data.launch_date;
+							response['new launch date'] = trigger.data.launch_date;
+						}`
+					}
+				]
+			},
+
+
+		]
+	}
+}

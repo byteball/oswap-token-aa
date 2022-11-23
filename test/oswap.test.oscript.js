@@ -22,16 +22,22 @@ describe('Various trades with the token', function () {
 
 	before(async () => {
 
+		this.common_ts = 1657843200
+
 		const lib = fs.readFileSync(path.join(__dirname, '../oswap-lib.oscript'), 'utf8');
 		const lib_address = await getAaAddress(lib);
+		const initial_sale_pool_base_aa = fs.readFileSync(path.join(__dirname, '../initial-sale-pool.oscript'), 'utf8');
+		const initial_sale_pool_base_address = await getAaAddress(initial_sale_pool_base_aa);
 		let oswap_aa = fs.readFileSync(path.join(__dirname, '../oswap.oscript'), 'utf8');
 		oswap_aa = oswap_aa.replace(/\$lib_aa = '\w{32}'/, `$lib_aa = '${lib_address}'`)
+		oswap_aa = oswap_aa.replace(/\$initial_sale_pool_base_aa = '\w{32}'/, `$initial_sale_pool_base_aa = '${initial_sale_pool_base_address}'`)
 
 		this.network = await Network.create()
 			.with.numberOfWitnesses(1)
 			.with.asset({ pool1: {} })
 			.with.asset({ pool2: {} })
 			.with.agent({ oswap_lib: path.join(__dirname, '../oswap-lib.oscript') })
+			.with.agent({ sale_pool_base: path.join(__dirname, '../initial-sale-pool.oscript') })
 			.with.wallet({ oracle: {base: 1e9} })
 			.with.wallet({ alice: {base: 1000e9, pool1: 1000e9, pool2: 10000e9} })
 			.with.wallet({ bob: {base: 1000e9, pool1: 1000e9, pool2: 10000e9} })
@@ -59,12 +65,14 @@ describe('Various trades with the token', function () {
 		this.bounce_fees = this.reserve_asset !== 'base' && { base: [{ address: this.oswap_aa, amount: 1e4 }] }
 		this.network_fee_on_top = this.reserve_asset === 'base' ? 1000 : 0
 
-		this.executeGetter = async (getter, args = []) => {
+		this.executeGetter = async (aa, getter, args = []) => {
 			const { result, error } = await this.alice.executeGetter({
-				aaAddress: this.oswap_aa,
+				aaAddress: aa,
 				getter,
 				args
 			})
+			if (error)
+				console.log(error)
 			expect(error).to.be.null
 			return result
 		}
@@ -75,7 +83,11 @@ describe('Various trades with the token', function () {
 		}
 
 		this.get_price = async (asset_label, bAfterInterest = true) => {
-			return await this.executeGetter('get_price', [asset_label, 0, 0, bAfterInterest])
+			return await this.executeGetter(this.oswap_aa, 'get_price', [asset_label, 0, 0, bAfterInterest])
+		}
+
+		this.get_presale_prices = async () => {
+			return await this.executeGetter(this.initial_sale_pool_address, 'get_prices')
 		}
 
 		this.checkCurve = () => {
@@ -127,7 +139,7 @@ describe('Various trades with the token', function () {
 	//	await this.network.witnessUntilStable(response.response_unit)
 
 		this.asset = response.response.responseVars.asset
-
+		this.initial_sale_pool_address = response.response.responseVars.initial_sale_pool_address
 	})
 
 	it('Bob whitelists pool1', async () => {
@@ -177,6 +189,283 @@ describe('Various trades with the token', function () {
 
 
 
+	it('Alice contributes to the initial pool', async () => {
+		const amount = 100e9
+		const { unit, error } = await this.alice.sendMulti({
+			outputs_by_asset: {
+				[this.reserve_asset]: [{ address: this.initial_sale_pool_address, amount: amount + this.network_fee_on_top }],
+				...this.bounce_fees
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.null
+		expect(response.response.responseVars.added).to.be.eq(amount)
+
+		const { vars } = await this.alice.readAAStateVars(this.initial_sale_pool_address)
+		expect(vars['user_' + this.aliceAddress]).to.eq(amount)
+		expect(vars.total).to.eq(amount)
+
+		const { final_price, avg_price } = await this.get_presale_prices()
+		console.log({ final_price, avg_price })
+	})
+
+	it('Bob contributes to the initial pool', async () => {
+		const amount = 100e9
+		const { unit, error } = await this.bob.sendMulti({
+			outputs_by_asset: {
+				[this.reserve_asset]: [{ address: this.initial_sale_pool_address, amount: amount + this.network_fee_on_top }],
+				...this.bounce_fees
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.null
+		expect(response.response.responseVars.added).to.be.eq(amount)
+
+		const { vars } = await this.bob.readAAStateVars(this.initial_sale_pool_address)
+		expect(vars['user_' + this.bobAddress]).to.eq(amount)
+		expect(vars.total).to.eq(200e9)
+
+		const { final_price, avg_price } = await this.get_presale_prices()
+		console.log({ final_price, avg_price })
+	})
+
+	it('Bob withdraws half', async () => {
+		const amount = 50e9
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.initial_sale_pool_address,
+			amount: 10000,
+			data: {
+				withdraw: 1,
+				amount: amount,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.validUnit
+		expect(response.response.responseVars.withdrawn).to.be.eq(amount)
+
+		const { vars } = await this.bob.readAAStateVars(this.initial_sale_pool_address)
+		expect(vars['user_' + this.bobAddress]).to.eq(50e9)
+		expect(vars.total).to.eq(150e9)
+
+		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
+		console.log(Utils.getExternalPayments(unitObj))
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+			{
+				address: this.bobAddress,
+				amount: amount,
+			},
+		])
+
+		const { final_price, avg_price } = await this.get_presale_prices()
+		console.log({ final_price, avg_price })
+
+	})
+
+	it('Bob triggers the initial pool to buy too early', async () => {
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.initial_sale_pool_address,
+			amount: 10000,
+			data: {
+				buy: 1,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.eq("too early")
+		expect(response.bounced).to.be.true
+	})
+
+	
+
+	it('Bob triggers the initial pool to buy', async () => {
+		await this.network.timetravel({ to: '2022-12-01' })
+		
+		const { final_price, avg_price } = await this.get_presale_prices()
+		console.log({ final_price, avg_price })
+
+		const total = 150e9
+		const tokens = Math.floor(total / avg_price)
+
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.initial_sale_pool_address,
+			amount: 10000,
+			data: {
+				buy: 1,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.validUnit
+		expect(response.response.responseVars.message).to.be.eq("bought")
+
+		const { vars } = await this.bob.readAAStateVars(this.initial_sale_pool_address)
+		expect(vars.tokens).to.eq(tokens)
+		this.avg_price = total / tokens
+
+		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
+		console.log(Utils.getExternalPayments(unitObj))
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+			{
+				address: this.oswap_aa,
+				amount: total + this.network_fee_on_top,
+			},
+		])
+	})
+
+	it('Bob triggers the initial pool to buy again', async () => {
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.initial_sale_pool_address,
+			amount: 10000,
+			data: {
+				buy: 1,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.eq("already bought")
+		expect(response.bounced).to.be.true
+	})
+
+	it('Bob stakes the tokens from the initial sale', async () => {	
+		
+		const amount = Math.floor(50e9 / this.avg_price)
+
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.initial_sale_pool_address,
+			amount: 10000,
+			data: {
+				stake: 1,
+				group_key: 'g1',
+				percentages: {a1: 100},
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.validUnit
+		expect(response.response.responseVars.sent).to.be.eq(amount)
+
+		const { vars: pool_vars } = await this.bob.readAAStateVars(this.initial_sale_pool_address)
+		expect(pool_vars['user_' + this.bobAddress]).to.be.undefined
+
+		const { vars: oswap_vars } = await this.bob.readAAStateVars(this.oswap_aa)
+		expect(oswap_vars['user_' + this.bobAddress]).to.be.deep.eq({
+			balance: amount,
+			reward: 0,
+			normalized_vp: amount * 4 ** ((response.timestamp - this.common_ts)/360/24/3600),
+			last_stakers_emissions: 0,
+			expiry_ts: response.timestamp + 4 * 360 * 24 * 3600,
+		});
+
+		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
+		console.log(Utils.getExternalPayments(unitObj))
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+			{
+				asset: this.asset,
+				address: this.oswap_aa,
+				amount: amount,
+			},
+		])
+	})
+
+	it('Bob tries to stake the tokens from the initial sale again', async () => {
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.initial_sale_pool_address,
+			amount: 10000,
+			data: {
+				stake: 1,
+				group_key: 'g1',
+				percentages: {a1: 100},
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.eq("you have no balance")
+		expect(response.bounced).to.be.true
+	})
+
+	it('Alice stakes the tokens from the initial sale', async () => {	
+		
+		const amount = Math.floor(100e9 / this.avg_price)
+
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.initial_sale_pool_address,
+			amount: 10000,
+			data: {
+				stake: 1,
+				group_key: 'g1',
+				percentages: {a1: 100},
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.validUnit
+		expect(response.response.responseVars.sent).to.be.eq(amount)
+
+		const { vars: pool_vars } = await this.alice.readAAStateVars(this.initial_sale_pool_address)
+		expect(pool_vars['user_' + this.aliceAddress]).to.be.undefined
+
+		const { vars: oswap_vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		expect(oswap_vars['user_' + this.aliceAddress]).to.be.deepCloseTo({
+			balance: amount,
+			reward: 0,
+			normalized_vp: amount * 4 ** ((response.timestamp - this.common_ts)/360/24/3600),
+			last_stakers_emissions: 0,
+			expiry_ts: response.timestamp + 4 * 360 * 24 * 3600,
+		}, 0.001);
+
+		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
+		console.log(Utils.getExternalPayments(unitObj))
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+			{
+				asset: this.asset,
+				address: this.oswap_aa,
+				amount: amount,
+			},
+		])
+	})
+
+
 	it('Alice buys tokens', async () => {
 		const amount = 100e9
 		const { unit, error } = await this.alice.sendMulti({
@@ -205,6 +494,7 @@ describe('Various trades with the token', function () {
 				amount: new_issued_shares,
 			},
 		])*/
+		this.new_issued_shares = unitObj.messages.find(m => m.app === 'payment' && m.payload.asset === this.asset).payload.outputs.find(o => o.address === this.aliceAddress).amount
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
 		console.log(vars)
@@ -216,7 +506,7 @@ describe('Various trades with the token', function () {
 
 
 	it('Alice sells tokens', async () => {
-		const amount = Math.floor(this.state.supply/2)
+		const amount = Math.floor(this.new_issued_shares/2)
 		const { unit, error } = await this.alice.sendMulti({
 			outputs_by_asset: {
 				[this.asset]: [{ address: this.oswap_aa, amount: amount }],
@@ -253,7 +543,7 @@ describe('Various trades with the token', function () {
 	})
 
 	it('Alice stakes tokens', async () => {
-		const amount = Math.floor(this.state.supply/2)
+		const amount = Math.floor(this.new_issued_shares/2)
 		const { unit, error } = await this.alice.sendMulti({
 			outputs_by_asset: {
 				[this.asset]: [{ address: this.oswap_aa, amount: amount }],
@@ -263,7 +553,7 @@ describe('Various trades with the token', function () {
 				app: 'data',
 				payload: {
 					stake: 1,
-					term: 360,
+					term: 4 * 360,
 					group_key: 'g1',
 					percentages: {a1: 100},
 				}
@@ -556,7 +846,7 @@ describe('Various trades with the token', function () {
 			data: {
 				stake: 1,
 				stake_reward: 1,
-				term: 360,
+				term: 4 * 360,
 				group_key: 'g1',
 				percentages: {a1: 100},
 			},
@@ -578,7 +868,7 @@ describe('Various trades with the token', function () {
 	})
 
 	it('Alice withdraws her stake', async () => {
-		await this.timetravel('360d')
+		await this.timetravel((4 * 360) + 'd')
 		const { unit, error } = await this.alice.triggerAaWithData({
 			toAddress: this.oswap_aa,
 			amount: 10000,

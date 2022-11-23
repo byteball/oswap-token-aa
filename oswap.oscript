@@ -47,19 +47,19 @@ track votes as normalized VP:
 
 
 		$get_reserve = ($s) => {
-			$state = var['state'];
+			$state = var['state'] OTHERWISE {coef: 1, s0: $initial_s0, supply: 0, reserve: 0};
 			$apply_appreciation($state);
 			($lib_aa||'')#0.$get_reserve_by_state(exists($s) ? $s : $s, $state);
 		};
 
 		$get_tokens = ($r) => {
-			$state = var['state'];
+			$state = var['state'] OTHERWISE {coef: 1, s0: $initial_s0, supply: 0, reserve: 0};
 			$apply_appreciation($state);
 			($lib_aa||'')#0.$get_tokens_by_state(exists($r) ? $r : $state.reserve, $state)
 		};
 		
 		$get_price = ($s) => {
-			$state = var['state'];
+			$state = var['state'] OTHERWISE {coef: 1, s0: $initial_s0, supply: 0, reserve: 0};
 			$apply_appreciation($state);
 			($lib_aa||'')#0.$get_price_by_state(exists($s) ? $s : $state.supply, $state)
 		};
@@ -139,13 +139,30 @@ track votes as normalized VP:
 
 		$challenging_period = $get_challenging_period();
 
+		$initial_sale_pool_base_aa = 'HEKTBZORLA347WXIJ2TPHMDXHRKQTRD5';
+
 	}`,
 	messages: {
 		cases: [
 
-			// 0. define the token asset
+			// 0. define the token asset and initial sale AA
 			{
 				if: `{ trigger.data.define AND !$asset }`,
+				init: `{
+					$initial_sale_pool_aa = [
+						'autonomous agent',
+						{
+							base_aa: $initial_sale_pool_base_aa,
+							params: {
+								token_aa: this_address,
+								reserve_asset: $reserve_asset,
+								buy_freeze_period: 1,
+								launch_date: '2022-12-01'
+							}
+						}
+					];
+					$initial_sale_pool_address = chash160($initial_sale_pool_aa);
+				}`,
 				messages: [
 					{
 						app: 'asset',
@@ -161,8 +178,16 @@ track votes as normalized VP:
 						}
 					},
 					{
+						app: 'definition',
+						payload: {
+							definition: `{$initial_sale_pool_aa}`
+						}
+					},
+					{
 						app: 'state',
 						state: `{
+							var['initial_sale_pool_address'] = $initial_sale_pool_address;
+							response['initial_sale_pool_address'] = $initial_sale_pool_address;
 							var['asset'] = response_unit;
 							response['asset'] = response_unit;
 						}`
@@ -640,6 +665,8 @@ track votes as normalized VP:
 			{
 				if: `{ $asset AND (trigger.output[[asset=$reserve_asset]] > $min_contribution OR trigger.output[[asset=$asset]] > 0) }`,
 				init: `{
+
+					require($state.supply OR trigger.address == var['initial_sale_pool_address'], "only the initial sale pool is allowed to make the first purchase");
 
 					$tokens = trigger.output[[asset=$asset]];
 					if ($tokens)
