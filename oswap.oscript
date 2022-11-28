@@ -82,6 +82,35 @@ track votes as normalized VP:
 			$user ? $user.normalized_vp * 4^((timestamp - $common_ts)/$year) : 0
 		};
 
+		$get_staking_reward = ($user_address) => {
+			$state = var['state'];
+			$user = var['user_' || $user_address];
+			$props = {
+				inflation_rate: $get_inflation_rate(),
+				stakers_share: $get_stakers_share(),
+			};
+			($lib_aa||'')#0.$distribute_stakers_emissions($state, $user, $props);
+			$user.reward
+		};
+
+		$get_lp_reward = ($user_address, $pool_asset, $deposit_aa) => {
+			$state = var['state'];
+			$props = {
+				inflation_rate: $get_inflation_rate(),
+				stakers_share: $get_stakers_share(),
+			};
+			$full_pool_asset = $pool_asset || ($deposit_aa ? '_'||$deposit_aa : '');
+			$pool = var['pool_'||$full_pool_asset];
+			$pool_vps = var['pool_vps_'||$pool.group_key] OTHERWISE {};
+			$lp_key = 'lp_' || ($deposit_aa OTHERWISE $user_address) || '_' || $pool.asset_key;
+			$lp = var[$lp_key] OTHERWISE {balance: 0, last_pool_emissions: 0, last_distribution_ts: 0, reward: 0};
+			if ($deposit_aa)
+				$lp.balance = balance[$deposit_aa][$pool_asset];
+			$total_lp_balance = $deposit_aa ? $lp.balance : var['pool_asset_balance_' || $pool.asset_key];
+			($lib_aa||'')#0.$distribute_lp_emissions($state, $lp, $pool, $pool_vps, $total_lp_balance, $props);
+			$lp.reward
+		};
+
 	}`,
 	init: `{
 

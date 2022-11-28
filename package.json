@@ -11,9 +11,9 @@
     "node": ">=8"
   },
   "dependencies": {
+    "aa-testkit": "git+https://github.com/valyakin/aa-testkit.git",
     "chai": "^4.2.0",
-    "mocha": "^6.2.0",
-    "aa-testkit": "git+https://github.com/valyakin/aa-testkit.git"
+    "mocha": "^6.2.0"
   },
   "devDependencies": {
     "eslint": "^6.3.0",

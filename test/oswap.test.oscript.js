@@ -90,6 +90,14 @@ describe('Various trades with the token', function () {
 			return await this.executeGetter(this.initial_sale_pool_address, 'get_prices')
 		}
 
+		this.get_staking_reward = async (user_address) => {
+			return await this.executeGetter(this.oswap_aa, 'get_staking_reward', [user_address])
+		}
+
+		this.get_lp_reward = async (user_address, pool_asset, deposit_aa) => {
+			return await this.executeGetter(this.oswap_aa, 'get_lp_reward', [user_address, pool_asset, deposit_aa])
+		}
+
 		this.checkCurve = () => {
 			const { reserve, supply, s0, coef } = this.state
 			const r = coef * s0 * supply / (s0 - supply)
@@ -697,6 +705,9 @@ describe('Various trades with the token', function () {
 	
 	it('Alice claims reward', async () => {
 		await this.timetravel('180d')
+
+		const reward = Math.floor(await this.get_staking_reward(this.aliceAddress))
+
 		const { unit, error } = await this.alice.triggerAaWithData({
 			toAddress: this.oswap_aa,
 			amount: 10000,
@@ -716,13 +727,13 @@ describe('Various trades with the token', function () {
 
 		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
-	/*	expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
 			{
 				asset: this.asset,
 				address: this.aliceAddress,
-				amount: new_issued_shares,
+				amount: reward,
 			},
-		])*/
+		])
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
 		console.log(vars)
@@ -758,7 +769,7 @@ describe('Various trades with the token', function () {
 		expect(response.bounced).to.be.false
 		expect(response.response_unit).to.be.null
 
-		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
 		console.log(vars)
 		this.state = vars.state
 
@@ -768,6 +779,9 @@ describe('Various trades with the token', function () {
 	
 	it('Bob harvests LP rewards', async () => {
 		await this.timetravel('180d')
+
+		const reward = Math.floor(await this.get_lp_reward(this.bobAddress, this.pool1))
+
 		const { unit, error } = await this.bob.triggerAaWithData({
 			toAddress: this.oswap_aa,
 			amount: 10000,
@@ -779,23 +793,23 @@ describe('Various trades with the token', function () {
 		expect(error).to.be.null
 		expect(unit).to.be.validUnit
 
-		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
 		console.log(response.response.error)
 		expect(response.response.error).to.be.undefined
 		expect(response.bounced).to.be.false
 		expect(response.response_unit).to.be.validUnit
 
-		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
+		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
-	/*	expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
 			{
 				asset: this.asset,
-				address: this.aliceAddress,
-				amount: new_issued_shares,
+				address: this.bobAddress,
+				amount: reward,
 			},
-		])*/
+		])
 
-		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
 		console.log(vars)
 		this.state = vars.state
 
@@ -804,6 +818,9 @@ describe('Various trades with the token', function () {
 	
 	it('Bob withdraws LP tokens and harvests LP rewards', async () => {
 		await this.timetravel('180d')
+
+		const reward = Math.floor(await this.get_lp_reward(this.bobAddress, this.pool1))
+
 		const { unit, error } = await this.bob.triggerAaWithData({
 			toAddress: this.oswap_aa,
 			amount: 10000,
@@ -815,23 +832,28 @@ describe('Various trades with the token', function () {
 		expect(error).to.be.null
 		expect(unit).to.be.validUnit
 
-		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
 		console.log(response.response.error)
 		expect(response.response.error).to.be.undefined
 		expect(response.bounced).to.be.false
 		expect(response.response_unit).to.be.validUnit
 
-		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
+		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
-	/*	expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
 			{
 				asset: this.asset,
-				address: this.aliceAddress,
-				amount: new_issued_shares,
+				address: this.bobAddress,
+				amount: reward,
 			},
-		])*/
+			{
+				asset: this.pool1,
+				address: this.bobAddress,
+				amount: 10e9,
+			},
+		])
 
-		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
 		console.log(vars)
 		this.state = vars.state
 
