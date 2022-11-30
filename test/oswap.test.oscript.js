@@ -527,7 +527,7 @@ describe('Various trades with the token', function () {
 
 
 	it('Alice sells tokens', async () => {
-		const amount = Math.floor(this.new_issued_shares/2)
+		const amount = Math.floor(this.new_issued_shares/3)
 		const { new_price, swap_fee, arb_profit_tax, total_fee, coef_multiplier, payout, delta_s, delta_reserve } = await this.get_exchange_result(amount, 0);
 		expect(delta_s).to.be.eq(-amount)
 		expect(delta_reserve).to.be.lt(0)
@@ -574,7 +574,7 @@ describe('Various trades with the token', function () {
 	})
 
 	it('Alice stakes tokens', async () => {
-		const amount = Math.floor(this.new_issued_shares/2)
+		const amount = Math.floor(this.new_issued_shares/3)
 		const { unit, error } = await this.alice.sendMulti({
 			outputs_by_asset: {
 				[this.asset]: [{ address: this.oswap_aa, amount: amount }],
@@ -663,6 +663,44 @@ describe('Various trades with the token', function () {
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
 		this.state = vars.state
+
+		this.checkCurve()
+	})
+
+	it('Alice stakes additional tokens', async () => {
+		const amount = Math.floor(this.new_issued_shares/3)
+		const { unit, error } = await this.alice.sendMulti({
+			outputs_by_asset: {
+				[this.asset]: [{ address: this.oswap_aa, amount: amount }],
+				base: [{ address: this.oswap_aa, amount: 1e4 }],
+			},
+			messages: [{
+				app: 'data',
+				payload: {
+					stake: 1,
+					term: 4 * 360,
+					group_key: 'g1',
+					percentages: { a1: 15, a2: 85 },
+				}
+			}],
+			spend_unconfirmed: 'all',
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+	//	console.log('logs', JSON.stringify(response.logs, null, 2))
+		console.log(response.response.error)
+	//	await this.network.witnessUntilStable(response.response_unit)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.null
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		this.state = vars.state
+		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
+		this.pool_vps_g1 = vars.pool_vps_g1
 
 		this.checkCurve()
 	})
