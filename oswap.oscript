@@ -200,7 +200,7 @@ track votes as normalized VP:
 								token_aa: this_address,
 								reserve_asset: $reserve_asset,
 								buy_freeze_period: 1,
-								launch_date: '2022-12-01'
+								launch_date: '2023-07-01'
 							}
 						}
 					];

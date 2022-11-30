@@ -86,6 +86,10 @@ describe('Various trades with the token', function () {
 			return await this.executeGetter(this.oswap_aa, 'get_price', [asset_label, 0, 0, bAfterInterest])
 		}
 
+		this.get_exchange_result = async (tokens, delta_r) => {
+			return await this.executeGetter(this.oswap_aa, 'get_exchange_result', [tokens, delta_r])
+		}
+
 		this.get_presale_prices = async () => {
 			return await this.executeGetter(this.initial_sale_pool_address, 'get_prices')
 		}
@@ -306,7 +310,7 @@ describe('Various trades with the token', function () {
 	
 
 	it('Bob triggers the initial pool to buy', async () => {
-		await this.network.timetravel({ to: '2022-12-01' })
+		await this.network.timetravel({ to: '2023-07-01' })
 		
 		const { final_price, avg_price } = await this.get_presale_prices()
 		console.log({ final_price, avg_price })
@@ -363,7 +367,6 @@ describe('Various trades with the token', function () {
 	})
 
 	it('Bob stakes the tokens from the initial sale', async () => {	
-		
 		const amount = Math.floor(50e9 / this.avg_price)
 
 		const { unit, error } = await this.bob.triggerAaWithData({
@@ -389,13 +392,13 @@ describe('Various trades with the token', function () {
 		expect(pool_vars['user_' + this.bobAddress]).to.be.undefined
 
 		const { vars: oswap_vars } = await this.bob.readAAStateVars(this.oswap_aa)
-		expect(oswap_vars['user_' + this.bobAddress]).to.be.deep.eq({
+		expect(oswap_vars['user_' + this.bobAddress]).to.be.deepCloseTo({
 			balance: amount,
 			reward: 0,
 			normalized_vp: amount * 4 ** ((response.timestamp - this.common_ts)/360/24/3600),
 			last_stakers_emissions: 0,
 			expiry_ts: response.timestamp + 4 * 360 * 24 * 3600,
-		});
+		}, 0.01);
 
 		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
@@ -428,7 +431,6 @@ describe('Various trades with the token', function () {
 	})
 
 	it('Alice stakes the tokens from the initial sale', async () => {	
-		
 		const amount = Math.floor(100e9 / this.avg_price)
 
 		const { unit, error } = await this.alice.triggerAaWithData({
@@ -460,7 +462,7 @@ describe('Various trades with the token', function () {
 			normalized_vp: amount * 4 ** ((response.timestamp - this.common_ts)/360/24/3600),
 			last_stakers_emissions: 0,
 			expiry_ts: response.timestamp + 4 * 360 * 24 * 3600,
-		}, 0.001);
+		}, 0.01);
 
 		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
@@ -476,6 +478,10 @@ describe('Various trades with the token', function () {
 
 	it('Alice buys tokens', async () => {
 		const amount = 100e9
+		const { new_price, swap_fee, arb_profit_tax, total_fee, coef_multiplier, payout, delta_s, delta_reserve } = await this.get_exchange_result(0, amount);
+		expect(payout).to.be.false
+		expect(delta_reserve).to.be.gt(0)
+
 		const { unit, error } = await this.alice.sendMulti({
 			outputs_by_asset: {
 				[this.reserve_asset]: [{ address: this.oswap_aa, amount: amount + this.network_fee_on_top }],
@@ -493,15 +499,22 @@ describe('Various trades with the token', function () {
 		expect(response.bounced).to.be.false
 		expect(response.response_unit).to.be.validUnit
 
+		expect(response.response.responseVars.price).to.eq(new_price)
+		expect(response.response.responseVars.swap_fee).to.eq(swap_fee)
+		expect(response.response.responseVars.arb_profit_tax).to.eq(arb_profit_tax)
+		expect(response.response.responseVars.total_fee).to.eq(total_fee)
+		expect(response.response.responseVars.coef_multiplier).to.eq(coef_multiplier)
+		expect(response.response.responseVars['fee%']).to.eq((+(total_fee / amount * 100).toFixed(4)) + '%')
+
 		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
-	/*	expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
 			{
 				asset: this.asset,
 				address: this.aliceAddress,
-				amount: new_issued_shares,
+				amount: Math.floor(delta_s),
 			},
-		])*/
+		])
 		this.new_issued_shares = unitObj.messages.find(m => m.app === 'payment' && m.payload.asset === this.asset).payload.outputs.find(o => o.address === this.aliceAddress).amount
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
@@ -515,6 +528,10 @@ describe('Various trades with the token', function () {
 
 	it('Alice sells tokens', async () => {
 		const amount = Math.floor(this.new_issued_shares/2)
+		const { new_price, swap_fee, arb_profit_tax, total_fee, coef_multiplier, payout, delta_s, delta_reserve } = await this.get_exchange_result(amount, 0);
+		expect(delta_s).to.be.eq(-amount)
+		expect(delta_reserve).to.be.lt(0)
+
 		const { unit, error } = await this.alice.sendMulti({
 			outputs_by_asset: {
 				[this.asset]: [{ address: this.oswap_aa, amount: amount }],
@@ -533,15 +550,21 @@ describe('Various trades with the token', function () {
 		expect(response.bounced).to.be.false
 		expect(response.response_unit).to.be.validUnit
 
+		expect(response.response.responseVars.price).to.eq(new_price)
+		expect(response.response.responseVars.swap_fee).to.eq(swap_fee)
+		expect(response.response.responseVars.arb_profit_tax).to.eq(arb_profit_tax)
+		expect(response.response.responseVars.total_fee).to.eq(total_fee)
+		expect(response.response.responseVars.coef_multiplier).to.eq(coef_multiplier)
+		expect(response.response.responseVars['fee%']).to.eq((+(total_fee / (-delta_reserve + total_fee) * 100).toFixed(4)) + '%')
+
 		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
-	/*	expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
 			{
-				asset: this.asset,
 				address: this.aliceAddress,
-				amount: new_issued_shares,
+				amount: payout,
 			},
-		])*/
+		])
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
 		console.log(vars)
