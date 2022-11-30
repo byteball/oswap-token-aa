@@ -885,6 +885,11 @@ describe('Various trades with the token', function () {
 	
 	it('Alice capitalizes her reward and extends the lock', async () => {
 		await this.timetravel('180d')
+
+		const { vars: initial_vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		const initial_balance = initial_vars['user_' + this.aliceAddress].balance
+		const reward = Math.floor(await this.get_staking_reward(this.aliceAddress))
+
 		const { unit, error } = await this.alice.triggerAaWithData({
 			toAddress: this.oswap_aa,
 			amount: 10000,
@@ -907,6 +912,7 @@ describe('Various trades with the token', function () {
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
 		console.log(vars)
+		expect(vars['user_' + this.aliceAddress].balance).to.be.eq(initial_balance + reward)
 		this.state = vars.state
 
 		this.checkCurve()
@@ -914,6 +920,10 @@ describe('Various trades with the token', function () {
 
 	it('Alice withdraws her stake', async () => {
 		await this.timetravel((4 * 360) + 'd')
+		
+		const { vars: initial_vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		const balance = initial_vars['user_' + this.aliceAddress].balance
+
 		const { unit, error } = await this.alice.triggerAaWithData({
 			toAddress: this.oswap_aa,
 			amount: 10000,
@@ -933,13 +943,13 @@ describe('Various trades with the token', function () {
 
 		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
-	/*	expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
 			{
 				asset: this.asset,
 				address: this.aliceAddress,
-				amount: new_issued_shares,
+				amount: balance,
 			},
-		])*/
+		])
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
 		console.log(vars)
@@ -951,6 +961,10 @@ describe('Various trades with the token', function () {
 	it('Alice buys more tokens', async () => {
 		await this.timetravel('1d')
 		const amount = 10e9
+		const { new_price, swap_fee, arb_profit_tax, total_fee, coef_multiplier, payout, delta_s, delta_reserve } = await this.get_exchange_result(0, amount);
+		expect(payout).to.be.false
+		expect(delta_reserve).to.be.gt(0)
+
 		const { unit, error } = await this.alice.sendMulti({
 			outputs_by_asset: {
 				[this.reserve_asset]: [{ address: this.oswap_aa, amount: amount + this.network_fee_on_top }],
@@ -968,15 +982,22 @@ describe('Various trades with the token', function () {
 		expect(response.bounced).to.be.false
 		expect(response.response_unit).to.be.validUnit
 
+		expect(response.response.responseVars.price).to.eq(new_price)
+		expect(response.response.responseVars.swap_fee).to.eq(swap_fee)
+		expect(response.response.responseVars.arb_profit_tax).to.eq(arb_profit_tax)
+		expect(response.response.responseVars.total_fee).to.eq(total_fee)
+		expect(response.response.responseVars.coef_multiplier).to.eq(coef_multiplier)
+		expect(response.response.responseVars['fee%']).to.eq((+(total_fee / amount * 100).toFixed(4)) + '%')
+
 		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
 		console.log(Utils.getExternalPayments(unitObj))
-	/*	expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
 			{
 				asset: this.asset,
 				address: this.aliceAddress,
-				amount: new_issued_shares,
+				amount: Math.floor(delta_s),
 			},
-		])*/
+		])
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
 		console.log(vars)
