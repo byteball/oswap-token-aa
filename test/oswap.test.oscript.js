@@ -41,6 +41,7 @@ describe('Various trades with the token', function () {
 			.with.wallet({ oracle: {base: 1e9} })
 			.with.wallet({ alice: {base: 1000e9, pool1: 1000e9, pool2: 10000e9} })
 			.with.wallet({ bob: {base: 1000e9, pool1: 1000e9, pool2: 10000e9} })
+			.with.wallet({ charlie: {base: 1000e9, pool1: 1000e9, pool2: 10000e9} })
 		//	.with.explorer()
 			.run()
 		
@@ -54,6 +55,8 @@ describe('Various trades with the token', function () {
 		this.aliceAddress = await this.alice.getAddress()
 		this.bob = this.network.wallet.bob
 		this.bobAddress = await this.bob.getAddress()
+		this.charlie = this.network.wallet.charlie
+		this.charlieAddress = await this.charlie.getAddress()
 
 		oswap_aa = oswap_aa.replace('ORACLEADDRESS', this.oracleAddress)
 		const { address: oswap_aa_address, error } = await this.alice.deployAgent(oswap_aa)
@@ -973,6 +976,7 @@ describe('Various trades with the token', function () {
 
 		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
 		console.log(vars)
+		expect(vars['lp_' + this.bobAddress + '_a2'].reward).to.eq(0)
 		this.state = vars.state
 		this.pool2_state = vars['pool_' + this.pool2]
 
@@ -1050,6 +1054,7 @@ describe('Various trades with the token', function () {
 
 		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
 		console.log(vars)
+		expect(vars['lp_' + this.bobAddress + '_a2'].reward).to.eq(0)
 		this.state = vars.state
 		this.pool2_state = vars['pool_' + this.pool2]
 
@@ -1091,6 +1096,38 @@ describe('Various trades with the token', function () {
 
 		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
 		console.log(vars)
+		expect(vars['lp_' + this.bobAddress + '_a1'].reward).to.eq(0)
+		this.state = vars.state
+
+		this.checkCurve()
+	})
+
+	it('Charlie harvests LP rewards for Bob in pool1', async () => {
+		await this.timetravel('180d')
+
+		const reward = await this.get_lp_reward(this.bobAddress, this.pool1)
+
+		const { unit, error } = await this.charlie.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				withdraw_lp_reward: 1,
+				pool_asset: this.pool1,
+				for: this.bobAddress
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.charlie, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.null
+
+		const { vars } = await this.charlie.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		expect(vars['lp_' + this.bobAddress + '_a1'].reward).to.eq(reward)
 		this.state = vars.state
 
 		this.checkCurve()
@@ -1135,6 +1172,7 @@ describe('Various trades with the token', function () {
 
 		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
 		console.log(vars)
+		expect(vars['lp_' + this.bobAddress + '_a1']).to.undefined
 		this.state = vars.state
 
 		this.checkCurve()

@@ -390,12 +390,15 @@ track votes as normalized VP:
 							$bWithdraw = true;
 							require(!$deposit_aa, "can't withdraw to deposit AA");
 						}
-					//	else if (trigger.data.withdraw_lp_reward)
-							$bWithdrawLpReward = true;
+						else if (trigger.data.withdraw_lp_reward) {
+							// if a user's share of LP tokens increases and they don't withdraw for a long time, they can get an unfairly large share for the earlier period when their share was small. This would also lead to excessive emission (by a factor of 2 in the worst case if there are 2 LPs). To prevent this, any third party can trigger the AA with "for" param and record the reward according to the current share.
+							$for_user_address = trigger.data.for; // if not a valid address, $lp will be zeros
+						}
+						$bWithdrawLpReward = !$for_user_address; // otherwise we only update the $lp using distribute_lp_emissions() but don't send anything
 					}
 					$pool = var['pool_'||$full_pool_asset];
 					require($pool, "unknown asset");
-					$lp_key = 'lp_' || ($deposit_aa OTHERWISE $user_address) || '_' || $pool.asset_key;
+					$lp_key = 'lp_' || ($deposit_aa OTHERWISE $for_user_address OTHERWISE $user_address) || '_' || $pool.asset_key;
 					$lp = var[$lp_key] OTHERWISE {balance: 0, last_pool_emissions: 0, last_distribution_ts: 0, reward: 0};
 					if ($deposit_aa)
 						$lp.balance = balance[$deposit_aa][$pool_asset];
