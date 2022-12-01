@@ -59,17 +59,21 @@
 		$distribute_lp_emissions = ($state, $lp, $pool, $pool_vps, $total_lp_balance, $props) => {
 			$update_total_emissions($state, $props);
 
-			if (!$state.total_normalized_vp OR $pool.blacklisted)
+			if (!$state.total_normalized_vp)
 				return;
-			$pool_share = $pool_vps[$pool.asset_key]/$state.total_normalized_vp;
 
-			$new_total_lp_emissions_since_prev_visit = $state.lp_emissions - $pool.last_lp_emissions;
-			$pool.last_lp_emissions = $state.lp_emissions; // that's total LP emissions to all the pools
-			$pool.received_emissions = $pool.received_emissions + $new_total_lp_emissions_since_prev_visit * $pool_share;
+			if (!$pool.blacklisted) {
+				$pool_share = $pool_vps[$pool.asset_key]/$state.total_normalized_vp;
+
+				$new_total_lp_emissions_since_prev_visit = $state.lp_emissions - $pool.last_lp_emissions;
+				$pool.last_lp_emissions = $state.lp_emissions; // that's total LP emissions to all the pools
+				$pool.received_emissions = $pool.received_emissions + $new_total_lp_emissions_since_prev_visit * $pool_share;
+			}
 
 			$new_emissions_since_prev_visit = $pool.received_emissions - $lp.last_pool_emissions;
 			$lp.last_pool_emissions = $pool.received_emissions;
 
+			// checking last_distribution_ts is important for detecting newly added deposit_aa-based pools as their balances might be non-zero
 			if ($lp.last_distribution_ts AND $lp.balance AND $total_lp_balance){
 				$reward = $new_emissions_since_prev_visit * $lp.balance/$total_lp_balance;
 				$lp.reward = $lp.reward + $reward;

@@ -804,7 +804,7 @@ describe('Various trades with the token', function () {
 	})
 
 
-	it('Bob deposits pool tokens', async () => {
+	it('Bob deposits pool1 tokens', async () => {
 		const amount = 10e9
 		const { unit, error } = await this.bob.sendMulti({
 			outputs_by_asset: {
@@ -837,8 +837,227 @@ describe('Various trades with the token', function () {
 		this.checkCurve()
 	})
 	
+	it('Bob deposits pool2 tokens', async () => {
+		const amount = 20e9
+		const { unit, error } = await this.bob.sendMulti({
+			outputs_by_asset: {
+				[this.pool2]: [{ address: this.oswap_aa, amount: amount }],
+				base: [{ address: this.oswap_aa, amount: 1e4 }],
+			},
+			messages: [{
+				app: 'data',
+				payload: {
+					deposit: 1,
+				}
+			}],
+			spend_unconfirmed: 'all',
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+	//	console.log('logs', JSON.stringify(response.logs, null, 2))
+		console.log(response.response.error)
+	//	await this.network.witnessUntilStable(response.response_unit)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.null
+
+		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		this.state = vars.state
+		this.initial_pool2_state = vars['pool_' + this.pool2]
+
+		this.checkCurve()
+	})
 	
-	it('Bob harvests LP rewards', async () => {
+	it('Alice deposits pool2 tokens too', async () => {
+		await this.timetravel('180d')
+		const amount = 20e9
+		const { unit, error } = await this.alice.sendMulti({
+			outputs_by_asset: {
+				[this.pool2]: [{ address: this.oswap_aa, amount: amount }],
+				base: [{ address: this.oswap_aa, amount: 1e4 }],
+			},
+			messages: [{
+				app: 'data',
+				payload: {
+					deposit: 1,
+				}
+			}],
+			spend_unconfirmed: 'all',
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+	//	console.log('logs', JSON.stringify(response.logs, null, 2))
+		console.log(response.response.error)
+	//	await this.network.witnessUntilStable(response.response_unit)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.null
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		this.state = vars.state
+		this.pool2_state = vars['pool_' + this.pool2]
+
+		this.checkCurve()
+	})
+	
+	it('Alice blacklists pool2', async () => {
+		await this.timetravel('180d')
+
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				vote_blacklist: 1,
+				pool_asset: this.pool2,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response.responseVars.message).to.be.eq("blacklisted")
+	//	await this.network.witnessUntilStable(response.response_unit)
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		expect(vars.last_asset_num).to.be.eq(2)
+		expect(vars.last_group_num).to.be.eq(1)
+		expect(vars['pool_vps_g1']).to.be.deepCloseTo({ total: this.pool_vps_g1.a1 + this.pool_vps_g1.a2, a1: this.pool_vps_g1.a1, a2: this.pool_vps_g1.a2 }, 0.001)
+		expect(vars['pool_' + this.pool2]).to.be.deep.eq({ asset_key: 'a2', group_key: 'g1', last_lp_emissions: this.state.lp_emissions, received_emissions: this.pool2_state.received_emissions, blacklisted: true })
+		this.state = vars.state
+		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
+
+		this.checkCurve()
+	})
+	
+	it('Bob harvests LP rewards in the blacklisted pool2', async () => {
+		await this.timetravel('180d')
+
+		const reward = await this.get_lp_reward(this.bobAddress, this.pool2)
+		expect(reward).to.eq((this.pool2_state.received_emissions - this.initial_pool2_state.received_emissions) / 2)
+
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				withdraw_lp_reward: 1,
+				pool_asset: this.pool2,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.validUnit
+
+		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
+		console.log(Utils.getExternalPayments(unitObj))
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+			{
+				asset: this.asset,
+				address: this.bobAddress,
+				amount: Math.floor(reward),
+			},
+		])
+
+		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		this.state = vars.state
+		this.pool2_state = vars['pool_' + this.pool2]
+
+		this.checkCurve()
+	})
+	
+
+	it('Alice whitelists pool2 again', async () => {
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				vote_whitelist: 1,
+				pool_asset: this.pool2,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response.responseVars.message).to.be.eq("re-whitelisted")
+	//	await this.network.witnessUntilStable(response.response_unit)
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		expect(vars.last_asset_num).to.be.eq(2)
+		expect(vars.last_group_num).to.be.eq(1)
+		expect(vars['pool_vps_g1']).to.be.deepCloseTo({ total: this.pool_vps_g1.a1 + this.pool_vps_g1.a2, a1: this.pool_vps_g1.a1, a2: this.pool_vps_g1.a2 }, 0.001)
+		expect(vars['pool_' + this.pool2]).to.be.deep.eq({ asset_key: 'a2', group_key: 'g1', last_lp_emissions: this.state.lp_emissions, received_emissions: this.pool2_state.received_emissions, blacklisted: false })
+		this.state = vars.state
+		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
+		this.pool2_state = vars['pool_' + this.pool2]
+
+		this.checkCurve()
+	})
+
+
+	it('Bob harvests LP rewards in the newly whitelisted pool2', async () => {
+		await this.timetravel('180d')
+
+		const total_emissions = 1 / 2 * 0.1 * this.state.supply // half-a-year * inflation rate
+		const lp_emisions = 0.5 * total_emissions
+		const pool2_emissions = this.pool_vps_g1.a2 / (this.pool_vps_g1.a1 + this.pool_vps_g1.a2) * lp_emisions
+		const reward = await this.get_lp_reward(this.bobAddress, this.pool2)
+		expect(reward).to.closeTo(pool2_emissions / 2, 0.0001)
+
+		const { unit, error } = await this.bob.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				withdraw_lp_reward: 1,
+				pool_asset: this.pool2,
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.bob, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.validUnit
+
+		const { unitObj } = await this.bob.getUnitInfo({ unit: response.response_unit })
+		console.log(Utils.getExternalPayments(unitObj))
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+			{
+				asset: this.asset,
+				address: this.bobAddress,
+				amount: Math.floor(reward),
+			},
+		])
+
+		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		this.state = vars.state
+		this.pool2_state = vars['pool_' + this.pool2]
+
+		this.checkCurve()
+	})
+	
+
+	it('Bob harvests LP rewards in pool1', async () => {
 		await this.timetravel('180d')
 
 		const reward = Math.floor(await this.get_lp_reward(this.bobAddress, this.pool1))
@@ -877,7 +1096,7 @@ describe('Various trades with the token', function () {
 		this.checkCurve()
 	})
 	
-	it('Bob withdraws LP tokens and harvests LP rewards', async () => {
+	it('Bob withdraws LP tokens and harvests LP rewards in pool1', async () => {
 		await this.timetravel('180d')
 
 		const reward = Math.floor(await this.get_lp_reward(this.bobAddress, this.pool1))
