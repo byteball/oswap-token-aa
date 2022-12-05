@@ -673,7 +673,7 @@ track votes as normalized VP:
 									}
 								}
 							}
-							var['user_value_votes_'||$user_address||'_'||$name] = exists($value) ? {value:$value, vp:$vp} : false;
+							var['user_value_votes_'||$user_address||'_'||$full_name] = exists($value) ? {value:$value, vp:$vp} : false;
 						}`
 					}
 				]
@@ -683,7 +683,7 @@ track votes as normalized VP:
 			{
 				if: `{ trigger.data.add_proposal }`,
 				init: `{
-					require(!is_valid_address(trigger.data.recipient), "invalid grant recipient address");
+					require(is_valid_address(trigger.data.recipient), "invalid grant recipient address");
 					require(is_integer(trigger.data.amount) AND trigger.data.amount > 0, "invalid grant amount");
 					require(unit[trigger.data.unit], "proposal unit not found");
 					require(trigger.data.expiry, "proposal expiry date not set");

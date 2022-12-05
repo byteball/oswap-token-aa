@@ -767,6 +767,131 @@ describe('Various trades with the token', function () {
 		this.checkCurve()
 	})
 	
+
+	it('Bob posts a grant request', async () => {
+		this.grant_amount = 10e9
+		const pledge = "I'm going to do this and that. For my work, I want to be paid " + this.grant_amount + " bytes"
+
+		const { unit, error } = await this.bob.sendMulti({
+			messages: [{
+				app: 'text',
+				payload: pledge
+			}],
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { unitObj } = await this.bob.getUnitInfo({ unit: unit })
+		const textMessage = unitObj.messages.find(m => m.app === 'text')
+		expect(textMessage.payload).to.be.equal(pledge)
+		await this.network.witnessUntilStable(unit)
+
+		this.grant_request_unit = unit
+	})
+	
+	it('Alice creates a proposal', async () => {
+		this.proposal_num = 1
+		const expiry = '2030-07-01'
+
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 1e4,
+			spend_unconfirmed: 'all',
+			data: {
+				add_proposal: 1,
+				type: 'grant',
+				recipient: this.bobAddress,
+				amount: this.grant_amount,
+				expiry: expiry,
+				unit: this.grant_request_unit
+			}
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnit(unit)
+	//	await this.network.witnessUntilStable(response.response_unit)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.null
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		expect(vars['count_proposals']).to.be.equal(this.proposal_num)
+		expect(vars['proposal_' + this.proposal_num]).to.be.deep.eq({
+			recipient: this.bobAddress,
+			amount: this.grant_amount,
+			unit: this.grant_request_unit,
+			expiry,
+		})
+
+	})
+
+	it('Alice votes for the proposal', async () => {
+		const name = 'proposal'
+		const full_name = name + this.proposal_num
+
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				vote_value: 1,
+				name: name,
+				num: this.proposal_num,
+				value: 'yes'
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnit(unit)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+		expect(response.response_unit).to.be.validUnit
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		console.log(vars)
+		expect(vars['value_votes_' + full_name + '_yes']).to.be.equal(this.alice_vp)
+		expect(vars['user_value_votes_' + this.aliceAddress + '_' + full_name]).to.deep.equal({ value: 'yes', vp: this.alice_vp })
+		expect(vars['leader_' + full_name]).to.deep.equal({ value: 'yes', flip_ts: response.timestamp })
+
+		const { unitObj } = await this.alice.getUnitInfo({ unit: response.response_unit })
+		console.log(Utils.getExternalPayments(unitObj))
+		expect(Utils.getExternalPayments(unitObj)).to.deep.equalInAnyOrder([
+			{
+				address: this.bobAddress,
+				amount: this.grant_amount,
+			},
+		])
+
+		this.checkCurve()
+	})
+
+	it('Alice votes for the proposal again and nothing changes', async () => {
+		const name = 'proposal'
+
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				vote_value: 1,
+				name: name,
+				num: this.proposal_num,
+				value: 'yes'
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnit(unit)
+		expect(response.response.error).to.be.eq("the proposal has already been decided upon")
+		expect(response.bounced).to.be.true
+		expect(response.response_unit).to.be.null
+
+		this.checkCurve()
+	})
+
+
 	it('Alice claims reward', async () => {
 		await this.timetravel('180d')
 
