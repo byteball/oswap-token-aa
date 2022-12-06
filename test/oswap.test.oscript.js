@@ -110,6 +110,55 @@ describe('Various trades with the token', function () {
 			const r = coef * s0 * supply / (s0 - supply)
 			expect(r).to.be.closeTo(reserve, 1)
 		}
+
+		this.checkVotes = (vars) => {
+			expect(vars.group_vps.total).to.eq(vars.state.total_normalized_vp);
+			let users = [];
+			let grand_total = 0;
+			let all_vps = {};
+			for (let v in vars) {
+				if (v.startsWith('user_')) {
+					const user = v.substr(5);
+					if (user.length === 32)
+						users.push(user);
+				}
+				if (v.startsWith('pool_vps_g')) {
+					const group_num = v.substr(10);
+					const pool_vps = vars[v];
+					let total = 0;
+					for (let key in pool_vps) {
+						if (key !== 'total' && pool_vps[key]) {
+							total += pool_vps[key];
+							all_vps[key] = pool_vps[key];
+						}
+					}
+					expect(total).to.closeTo(pool_vps.total, 0.5);
+					expect(total).to.closeTo(vars.group_vps['g' + group_num], 0.5);
+					grand_total += total;
+				}
+			}
+			expect(grand_total).to.closeTo(vars.state.total_normalized_vp, 0.5);
+		
+			let total_normalized_vp = 0;
+			let all_users_vps = {};
+			for (let user of users) {
+				const { normalized_vp } = vars['user_' + user];
+				total_normalized_vp += normalized_vp;
+				let total_votes = 0;
+				const votes = vars['votes_' + user];
+				for (let key in votes) {
+					total_votes += votes[key];
+					if (!all_users_vps[key])
+						all_users_vps[key] = 0;
+					all_users_vps[key] += votes[key];
+				}
+				expect(total_votes).to.closeTo(normalized_vp, 0.5);
+			}
+			expect(total_normalized_vp).to.closeTo(vars.state.total_normalized_vp, 0.5)
+			expect(Object.keys(all_vps).length).to.eq(Object.keys(all_users_vps).length)
+			for (let key in all_vps)
+				expect(all_vps[key]).to.closeTo(all_users_vps[key], 0.5);
+		}
 	})
 
 
@@ -412,6 +461,8 @@ describe('Various trades with the token', function () {
 				amount: amount,
 			},
 		])
+
+		this.checkVotes(oswap_vars)
 	})
 
 	it('Bob tries to stake the tokens from the initial sale again', async () => {
@@ -476,6 +527,8 @@ describe('Various trades with the token', function () {
 				amount: amount,
 			},
 		])
+
+		this.checkVotes(oswap_vars)
 	})
 
 
@@ -525,6 +578,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 
@@ -574,6 +628,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 	it('Alice stakes tokens', async () => {
@@ -611,6 +666,7 @@ describe('Various trades with the token', function () {
 		this.pool_vps_g1 = vars.pool_vps_g1
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 
@@ -642,6 +698,7 @@ describe('Various trades with the token', function () {
 		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 	it('Alice moves a part of her VP to pool2', async () => {
@@ -668,6 +725,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 	it('Alice stakes additional tokens', async () => {
@@ -706,6 +764,7 @@ describe('Various trades with the token', function () {
 		this.pool_vps_g1 = vars.pool_vps_g1
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 	it('Alice changes swap fee', async () => {
@@ -735,6 +794,7 @@ describe('Various trades with the token', function () {
 		expect(vars['leader_swap_fee']).to.be.deep.eq({ value: 0.005, flip_ts: response.timestamp })
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 	it('Alice changes swap fee again', async () => {
@@ -765,6 +825,7 @@ describe('Various trades with the token', function () {
 		expect(vars['leader_swap_fee']).to.be.deep.eq({ value: 0.006, flip_ts: response.timestamp })
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 
@@ -865,6 +926,7 @@ describe('Various trades with the token', function () {
 		])
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 	it('Alice votes for the proposal again and nothing changes', async () => {
@@ -929,6 +991,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 
@@ -963,6 +1026,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 	it('Bob deposits pool2 tokens', async () => {
@@ -997,6 +1061,7 @@ describe('Various trades with the token', function () {
 		this.initial_pool2_state = vars['pool_' + this.pool2]
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 	it('Alice deposits pool2 tokens too', async () => {
@@ -1032,6 +1097,7 @@ describe('Various trades with the token', function () {
 		this.pool2_state = vars['pool_' + this.pool2]
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 	it('Alice blacklists pool2', async () => {
@@ -1064,6 +1130,7 @@ describe('Various trades with the token', function () {
 		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 	it('Bob harvests LP rewards in the blacklisted pool2', async () => {
@@ -1106,6 +1173,7 @@ describe('Various trades with the token', function () {
 		this.pool2_state = vars['pool_' + this.pool2]
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 
@@ -1138,6 +1206,7 @@ describe('Various trades with the token', function () {
 		this.pool2_state = vars['pool_' + this.pool2]
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 
@@ -1184,6 +1253,7 @@ describe('Various trades with the token', function () {
 		this.pool2_state = vars['pool_' + this.pool2]
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 
@@ -1225,6 +1295,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 	it('Charlie harvests LP rewards for Bob in pool1', async () => {
@@ -1256,6 +1327,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 	it('Bob withdraws LP tokens and harvests LP rewards in pool1', async () => {
@@ -1301,6 +1373,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 	
 	it('Alice capitalizes her reward and extends the lock', async () => {
@@ -1336,6 +1409,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 	it('Alice withdraws her stake', async () => {
@@ -1376,6 +1450,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 	it('Alice buys more tokens', async () => {
@@ -1424,6 +1499,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 
 		this.checkCurve()
+		this.checkVotes(vars)
 	})
 
 
