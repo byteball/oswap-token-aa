@@ -73,8 +73,8 @@
 			$new_emissions_since_prev_visit = $pool.received_emissions - $lp.last_pool_emissions;
 			$lp.last_pool_emissions = $pool.received_emissions;
 
-			// checking last_distribution_ts is important for detecting newly added deposit_aa-based pools as their balances might be non-zero
-			if ($lp.last_distribution_ts AND $lp.balance AND $total_lp_balance){
+			// newly added deposit_aa-based pools have non-zero balances and receive a reward when withdraw_lp_reward is requested for the first time. In this case, $lp.last_pool_emissions = 0 and the $lp receives the rewards accrued since the pool was whitelisted. For non-depost_aa pools, the first action is a deposit, hence $lp.balance = 0 and we don't enter this block.
+			if ($lp.balance AND $total_lp_balance){
 				$reward = $new_emissions_since_prev_visit * $lp.balance/$total_lp_balance;
 				$lp.reward = $lp.reward + $reward;
 				$increase_supply($state, $reward);

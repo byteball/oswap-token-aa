@@ -1,0 +1,20 @@
+// test deposit AA
+{
+	messages: {
+		cases: [
+
+			{
+				if: `{ trigger.output[[asset!=base]] }`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							response['added'] = trigger.output[[asset!=base]];
+						}`
+					}
+				]
+			},
+			
+		]
+	}
+}

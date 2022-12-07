@@ -18,7 +18,7 @@ track votes as normalized VP:
 		$initial_s0 = 1e13;
 
 
-		$lib_aa = 'K634FFWR4GR2IGAHL5ORJ2PCGKEBNBSA';
+		$lib_aa = 'ENTSJX3V5GKKUPGG772G6IFOTE7DSR2E';
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
 		$year = 31104000; // 360 * 24 * 3600;
 
@@ -101,6 +101,7 @@ track votes as normalized VP:
 			};
 			$full_pool_asset = $pool_asset || ($deposit_aa ? '_'||$deposit_aa : '');
 			$pool = var['pool_'||$full_pool_asset];
+			require($pool, "no such pool "||$full_pool_asset);
 			$pool_vps = var['pool_vps_'||$pool.group_key] OTHERWISE {};
 			$lp_key = 'lp_' || ($deposit_aa OTHERWISE $user_address) || '_' || $pool.asset_key;
 			$lp = var[$lp_key] OTHERWISE {balance: 0, last_pool_emissions: 0, last_distribution_ts: 0, reward: 0};
