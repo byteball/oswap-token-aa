@@ -307,6 +307,7 @@ track votes as normalized VP:
 					$group_key = trigger.data.group_key;
 					$votes = var['votes_'||$user_address];
 					require($votes, "you have no votes");
+				//	require(!$user.count_voted_props, "please remove your votes first");
 					$group_vps = var['group_vps'] OTHERWISE {};
 					$pool_vps = var['pool_vps_'||$group_key] OTHERWISE {};
 				}`,
@@ -487,9 +488,9 @@ track votes as normalized VP:
 
 			// vote for whitelist/blacklist
 			{
-				if: `{(trigger.data.vote_whitelist OR trigger.data.vote_blacklist) AND trigger.data.pool_asset}`,
+				if: `{(trigger.data.vote_whitelist OR trigger.data.vote_blacklist OR trigger.data.vote_neutral) AND trigger.data.pool_asset}`,
 				init: `{
-					$sign = trigger.data.vote_whitelist ? 1 : -1;
+					$sign = trigger.data.vote_whitelist ? 1 : (trigger.data.vote_blacklist ? -1 : 0);
 					$pool_asset = trigger.data.pool_asset;
 					$deposit_aa = trigger.data.deposit_aa;
 					$full_pool_asset = $pool_asset || ($deposit_aa ? '_'||$deposit_aa : '');
@@ -567,6 +568,16 @@ track votes as normalized VP:
 									}
 								}
 								var['pool_'||$full_pool_asset] = $new_pool OTHERWISE $pool;
+								/*
+								if (!$old_vp AND $new_vp) // joining the vote on this pool
+									$delta_voted_props = 1;
+								else if ($old_vp AND !$new_vp) // removing one's vote
+									$delta_voted_props = -1;
+								if ($delta_voted_props) {
+									$user.count_voted_props = $user.count_voted_props + $delta_voted_props;
+									var['user_'||$user_address] = $user;
+								}
+								*/
 							}
 						}`
 					}
@@ -677,6 +688,16 @@ track votes as normalized VP:
 								}
 							}
 							var['user_value_votes_'||$user_address||'_'||$full_name] = exists($value) ? {value:$value, vp:$vp} : false;
+							/*
+							if (!$prev_vote AND exists($value)) // joining the vote on this prop
+								$delta_voted_props = 1;
+							else if ($prev_vote AND !exists($value)) // removing one's vote
+								$delta_voted_props = -1;
+							if ($delta_voted_props) {
+								$user.count_voted_props = $user.count_voted_props + $delta_voted_props;
+								var['user_'||$user_address] = $user;
+							}
+							*/
 						}`
 					}
 				]
