@@ -16,7 +16,7 @@ track votes as normalized VP:
 
 		$reserve_asset = 'base';
 		$initial_s0 = 1e13;
-
+		$min_staking_term = 14; // in days
 
 		$lib_aa = 'ENTSJX3V5GKKUPGG772G6IFOTE7DSR2E';
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
@@ -249,7 +249,7 @@ track votes as normalized VP:
 				init: `{
 					$term = trigger.data.term; // in days
 					$four_years = 4 * 360;
-					require($term > 0 AND is_integer($term) AND $term <= $four_years, "invalid term");
+					require($term >= $min_staking_term AND is_integer($term) AND $term <= $four_years, "invalid term");
 
 					$new_expiry_ts = timestamp + $term * 24 * 3600;
 					require($new_expiry_ts >= $user.expiry_ts, "the new term should expire after " || timestamp_to_string($user.expiry_ts));
