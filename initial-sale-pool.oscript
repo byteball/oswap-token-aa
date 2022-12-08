@@ -111,8 +111,8 @@
 			{
 				if: `{ trigger.address == $token_aa }`,
 				init: `{
-					$asset = var[$token_aa]['asset'];
-					$tokens = trigger.output[[asset=$asset]];
+					$constants = var[$token_aa]['constants'];
+					$tokens = trigger.output[[asset=$constants.asset]];
 					require($tokens > 0, "no tokens received");
 					require(!var['tokens'], "already bought");
 				}`,
@@ -135,13 +135,13 @@
 					$balance = var['user_'||trigger.address];
 					require($balance, "you have no balance");
 					$amount = floor($balance / var['total'] * var['tokens']);
-					$asset = var[$token_aa]['asset'];
+					$constants = var[$token_aa]['constants'];
 				}`,
 				messages: [
 					{
 						app: 'payment',
 						payload: {
-							asset: `{$asset}`,
+							asset: `{$constants.asset}`,
 							outputs: [{address: `{$token_aa}`, amount: `{$amount}`}]
 						}
 					},
