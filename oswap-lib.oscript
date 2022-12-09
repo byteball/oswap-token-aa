@@ -95,7 +95,7 @@
 				$pool_vps[$pool_asset_key] = $pool_vps[$pool_asset_key] + $added_vp;
 			});
 			require($totals.total == 100, "percentages sum to "||$totals.total);
-			require(length($votes) <= 100, "max total number of supported pools is 100");
+			require(length($votes) <= 30, "max total number of supported pools is 30");
 			$pool_vps.total = $pool_vps.total + $delta_normalized_vp;
 		};
 
@@ -123,11 +123,11 @@
 				$group_vps[$group_key] = $group_vps[$group_key] + $delta_vp;
 			});
 			require(abs($totals.total) < $totals.max * 1e-15, "total votes changed by "||$totals.total); // allow some rounding error
-			require(length($votes) <= 100, "max total number of supported pools is 100");
+			require(length($votes) <= 30, "max total number of supported pools is 30");
 		};
 
 		$remove_votes = ($votes, $pool_vps) => {
-			foreach($votes, 100, ($pool_asset_key, $vp) => {
+			foreach($votes, 30, ($pool_asset_key, $vp) => {
 				require(exists($pool_vps[$pool_asset_key]), "pool asset key "||$pool_asset_key||" not found in the indicated group");
 				$pool_vps[$pool_asset_key] = $pool_vps[$pool_asset_key] - $votes[$pool_asset_key];
 			});
