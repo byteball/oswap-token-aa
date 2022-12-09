@@ -135,8 +135,8 @@ describe('Various trades with the token', function () {
 							all_vps[key] = pool_vps[key];
 						}
 					}
-					expect(total).to.closeTo(pool_vps.total, 1);
-					expect(total).to.closeTo(vars.group_vps['g' + group_num], 1);
+					expect(total).to.closeTo(pool_vps.total, 1.5);
+					expect(total).to.closeTo(vars.group_vps['g' + group_num] || 0, 1.5);
 					grand_total += total;
 				}
 			}
@@ -160,7 +160,7 @@ describe('Various trades with the token', function () {
 			expect(total_normalized_vp).to.closeTo(vars.state.total_normalized_vp, 0.9)
 			expect(Object.keys(all_vps).length).to.eq(Object.keys(all_users_vps).length)
 			for (let key in all_vps)
-				expect(all_vps[key]).to.closeTo(all_users_vps[key], 0.5);
+				expect(all_vps[key]).to.closeTo(all_users_vps[key], 0.8);
 		}
 	})
 
@@ -982,6 +982,56 @@ describe('Various trades with the token', function () {
 		expect(response.response.responseVars.added).to.be.eq(amount)
 	})
 
+	it("Alice whitelists 98 more assets to depleet the group1's capacity", async () => {
+		let assets = [];
+		for (let i = 3; i <= 30; i++){
+			const { unit, error } = await this.alice.createAsset({
+				is_private: false,
+				is_transferrable: true,
+				auto_destroy: false,
+				issued_by_definer_only: true,
+				cosigned_by_definer: false,
+				spender_attested: false,
+				fixed_denominations: false,
+			})
+		//	console.log({ unit, error })
+			expect(error).to.be.null
+			assets.push(unit)
+		}
+		let num = 2
+		for (let asset of assets) {
+			num++;
+			const { unit, error } = await this.alice.triggerAaWithData({
+				toAddress: this.oswap_aa,
+				amount: 10000,
+				data: {
+					vote_whitelist: 1,
+					pool_asset: asset,
+				},
+			})
+			expect(error).to.be.null
+			expect(unit).to.be.validUnit
+
+			const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		//	console.log(num, response.response.error)
+			expect(response.response.error).to.be.undefined
+			expect(response.bounced).to.be.false
+			expect(response.response.responseVars.message).to.be.eq("whitelisted")
+
+			const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+			expect(vars.last_asset_num).to.be.eq(num)
+			expect(vars.last_group_num).to.be.eq(1)
+			expect(vars['pool_' + asset]).to.be.deep.eq({ asset_key: 'a' + num, group_key: 'g1', last_lp_emissions: this.state.lp_emissions, received_emissions: 0 })
+		}
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		expect(vars.last_asset_num).to.be.eq(30)
+		expect(vars.last_group_num).to.be.eq(1)
+
+		this.checkCurve()
+		this.checkVotes(vars)
+	})
+
 	it('Alice whitelists pool2-deposit-aa', async () => {
 		const { unit, error } = await this.alice.triggerAaWithData({
 			toAddress: this.oswap_aa,
@@ -1003,13 +1053,17 @@ describe('Various trades with the token', function () {
 	//	await this.network.witnessUntilStable(response.response_unit)
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
-		expect(vars.last_asset_num).to.be.eq(3)
-		expect(vars.last_group_num).to.be.eq(1)
-		expect(vars['pool_vps_g1']).to.be.deepCloseTo({ total: this.alice_vp + this.bob_vp, a1: this.alice_vp * 0.7 + this.bob_vp, a2: this.alice_vp * 0.3, a3: 0 }, 0.01)
-		expect(vars['pool_' + this.pool2 + '_' + this.deposit_aa]).to.be.deep.eq({ asset_key: 'a3', group_key: 'g1', last_lp_emissions: this.state.lp_emissions, received_emissions: 0 })
+		expect(vars.last_asset_num).to.be.eq(31)
+		expect(vars.last_group_num).to.be.eq(2)
+		let g1_vps = { total: this.alice_vp + this.bob_vp, a1: this.alice_vp * 0.7 + this.bob_vp, a2: this.alice_vp * 0.3 }
+		for (let i = 3; i <= 30; i++)
+			g1_vps['a' + i] = 0;
+		expect(vars['pool_vps_g1']).to.be.deepCloseTo(g1_vps, 0.01)
+		expect(vars['pool_vps_g2']).to.be.deep.eq({ total: 0, a31: 0 })
+		expect(vars['pool_' + this.pool2 + '_' + this.deposit_aa]).to.be.deep.eq({ asset_key: 'a31', group_key: 'g2', last_lp_emissions: this.state.lp_emissions, received_emissions: 0 })
 		this.state = vars.state
 		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
-		this.pool3_initial_lp_emissions = this.state.lp_emissions
+		this.pool31_initial_lp_emissions = this.state.lp_emissions
 
 		this.checkCurve()
 		this.checkVotes(vars)
@@ -1024,7 +1078,8 @@ describe('Various trades with the token', function () {
 			data: {
 				vote_shares: 1,
 				group_key1: 'g1',
-				changes: { a1: -0.1 * vp, a2: -0.1 * vp, a3: 0.2 * vp },
+				group_key2: 'g2',
+				changes: { a1: -0.1 * vp, a2: -0.1 * vp, a31: 0.2 * vp },
 			},
 		})
 		expect(error).to.be.null
@@ -1055,8 +1110,8 @@ describe('Various trades with the token', function () {
 				payload: {
 					stake: 1,
 					term: 4 * 360,
-					group_key: 'g1',
-					percentages: { a1: 15, a2: 65, a3: 20 },
+					group_key: 'g2',
+					percentages: { a31: 100 },
 				}
 			}],
 			spend_unconfirmed: 'all',
@@ -1076,6 +1131,7 @@ describe('Various trades with the token', function () {
 		this.state = vars.state
 		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
 		this.pool_vps_g1 = vars.pool_vps_g1
+		this.pool_vps_g2 = vars.pool_vps_g2
 
 		this.checkCurve()
 		this.checkVotes(vars)
@@ -1209,9 +1265,13 @@ describe('Various trades with the token', function () {
 	//	await this.network.witnessUntilStable(response.response_unit)
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
-		expect(vars.last_asset_num).to.be.eq(3)
-		expect(vars.last_group_num).to.be.eq(1)
-		expect(vars['pool_vps_g1']).to.be.deepCloseTo({ total: this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g1.a3, a1: this.pool_vps_g1.a1, a2: this.pool_vps_g1.a2, a3: this.pool_vps_g1.a3 }, 0.001)
+		expect(vars.last_asset_num).to.be.eq(31)
+		expect(vars.last_group_num).to.be.eq(2)
+		let g1_vps = { total: this.pool_vps_g1.a1 + this.pool_vps_g1.a2, a1: this.pool_vps_g1.a1, a2: this.pool_vps_g1.a2 }
+		for (let i = 3; i <= 30; i++)
+			g1_vps['a' + i] = 0;
+		expect(vars['pool_vps_g1']).to.be.deepCloseTo(g1_vps, 0.001)
+		expect(vars['pool_vps_g2']).to.be.deepCloseTo({ total: this.pool_vps_g2.a31, a31: this.pool_vps_g2.a31 }, 0.001);
 		expect(vars['pool_' + this.pool2]).to.be.deep.eq({ asset_key: 'a2', group_key: 'g1', last_lp_emissions: this.state.lp_emissions, received_emissions: this.pool2_state.received_emissions, blacklisted: true })
 		this.state = vars.state
 		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
@@ -1284,15 +1344,19 @@ describe('Various trades with the token', function () {
 	//	await this.network.witnessUntilStable(response.response_unit)
 
 		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
-		expect(vars.last_asset_num).to.be.eq(3)
-		expect(vars.last_group_num).to.be.eq(1)
-		expect(vars['pool_vps_g1']).to.be.deepCloseTo({ total: this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g1.a3, a1: this.pool_vps_g1.a1, a2: this.pool_vps_g1.a2, a3: this.pool_vps_g1.a3 }, 0.001)
+		expect(vars.last_asset_num).to.be.eq(31)
+		expect(vars.last_group_num).to.be.eq(2)
+		let g1_vps = { total: this.pool_vps_g1.a1 + this.pool_vps_g1.a2, a1: this.pool_vps_g1.a1, a2: this.pool_vps_g1.a2 }
+		for (let i = 3; i <= 30; i++)
+			g1_vps['a' + i] = 0;
+		expect(vars['pool_vps_g1']).to.be.deepCloseTo(g1_vps, 0.001)
+		expect(vars['pool_vps_g2']).to.be.deepCloseTo({ total: this.pool_vps_g2.a31, a31: this.pool_vps_g2.a31 }, 0.001);
 		expect(vars['pool_' + this.pool2]).to.be.deep.eq({ asset_key: 'a2', group_key: 'g1', last_lp_emissions: this.state.lp_emissions, received_emissions: this.pool2_state.received_emissions, blacklisted: false })
 		this.state = vars.state
 		this.alice_vp = vars['user_' + this.aliceAddress].normalized_vp
 		this.pool2_state = vars['pool_' + this.pool2]
-		this.pool3_state = vars['pool_' + this.pool2 + '_' + this.deposit_aa]
-		expect(this.pool3_state.last_lp_emissions).to.eq(this.pool3_initial_lp_emissions)
+		this.pool31_state = vars['pool_' + this.pool2 + '_' + this.deposit_aa]
+		expect(this.pool31_state.last_lp_emissions).to.eq(this.pool31_initial_lp_emissions)
 
 		this.checkCurve()
 		this.checkVotes(vars)
@@ -1304,7 +1368,7 @@ describe('Various trades with the token', function () {
 
 		const total_emissions = 1 / 2 * 0.1 * this.state.supply // half-a-year * inflation rate
 		const lp_emissions = 0.5 * total_emissions
-		const pool2_emissions = this.pool_vps_g1.a2 / (this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g1.a3) * lp_emissions
+		const pool2_emissions = this.pool_vps_g1.a2 / (this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g2.a31) * lp_emissions
 		const reward = await this.get_lp_reward(this.bobAddress, this.pool2)
 		expect(reward).to.closeTo(pool2_emissions / 2, 0.0001)
 
@@ -1349,9 +1413,9 @@ describe('Various trades with the token', function () {
 		await this.timetravel('180d')
 		const total_emissions = 1 / 2 * 0.1 * this.state.supply // half-a-year * inflation rate
 		const lp_emissions = 0.5 * total_emissions
-		const pool3_emissions = this.pool_vps_g1.a3 / (this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g1.a3) * (this.state.lp_emissions + lp_emissions - this.pool3_initial_lp_emissions)
+		const pool31_emissions = this.pool_vps_g2.a31 / (this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g2.a31) * (this.state.lp_emissions + lp_emissions - this.pool31_initial_lp_emissions)
 		const reward = await this.get_lp_reward(this.bobAddress, this.pool2, this.deposit_aa)
-		expect(reward).to.closeTo(pool3_emissions, 0.0001)
+		expect(reward).to.closeTo(pool31_emissions, 0.0001)
 
 		const { unit, error } = await this.bob.triggerAaWithData({
 			toAddress: this.oswap_aa,
@@ -1383,8 +1447,8 @@ describe('Various trades with the token', function () {
 
 		const { vars } = await this.bob.readAAStateVars(this.oswap_aa)
 		console.log(vars)
-		expect(vars['lp_' + this.bobAddress + '_a3']).to.be.undefined
-		expect(vars['lp_' + this.deposit_aa + '_a3'].reward).to.eq(0)
+		expect(vars['lp_' + this.bobAddress + '_a31']).to.be.undefined
+		expect(vars['lp_' + this.deposit_aa + '_a31'].reward).to.eq(0)
 		this.state = vars.state
 
 		this.checkCurve()
@@ -1547,8 +1611,75 @@ describe('Various trades with the token', function () {
 		this.checkVotes(vars)
 	})
 
-	it('Alice withdraws her stake', async () => {
+	it('Alice tries to withdraw her stake too early', async () => {		
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				unstake: 1,
+				group_key: 'g1',
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.bounced).to.be.true
+		expect(response.response.error).to.include("you can unstake only after ")
+	})
+
+	it('Alice tries to withdraw her stake without moving all the votes to a single group', async () => {
 		await this.timetravel((4 * 360) + 'd')
+		
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				unstake: 1,
+				group_key: 'g1',
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.bounced).to.be.true
+		expect(response.response.error).to.include("pool asset key a31 not found in the indicated group")
+	})
+
+	it('Alice moves her VP from pool2-deposit-aa to g1', async () => {
+		const a31_vp = this.pool_vps_g2.a31
+		console.log({ a31_vp })
+		const { unit, error } = await this.alice.triggerAaWithData({
+			toAddress: this.oswap_aa,
+			amount: 10000,
+			data: {
+				vote_shares: 1,
+				group_key1: 'g1',
+				group_key2: 'g2',
+				changes: { a1: 0.85 * a31_vp, a2: 0.15 * a31_vp, a31: -a31_vp },
+			},
+		})
+		expect(error).to.be.null
+		expect(unit).to.be.validUnit
+
+		const { response } = await this.network.getAaResponseToUnitOnNode(this.alice, unit)
+		console.log(response.response.error)
+		expect(response.response.error).to.be.undefined
+		expect(response.bounced).to.be.false
+
+		const { vars } = await this.alice.readAAStateVars(this.oswap_aa)
+		expect(vars['votes_' + this.aliceAddress].a31).to.be.undefined
+		expect(vars['pool_vps_g2']).to.be.deep.eq({ total: 0, a31: 0 });
+		this.state = vars.state
+
+		this.checkCurve()
+		this.checkVotes(vars)
+	})
+
+	it('Alice withdraws her stake', async () => {
 		
 		const { vars: initial_vars } = await this.alice.readAAStateVars(this.oswap_aa)
 		const balance = initial_vars['user_' + this.aliceAddress].balance
