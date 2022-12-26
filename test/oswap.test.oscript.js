@@ -982,7 +982,7 @@ describe('Various trades with the token', function () {
 		expect(response.response.responseVars.added).to.be.eq(amount)
 	})
 
-	it("Alice whitelists 98 more assets to depleet the group1's capacity", async () => {
+	it("Alice whitelists 28 more assets to deplete the group1's capacity", async () => {
 		let assets = [];
 		for (let i = 3; i <= 30; i++){
 			const { unit, error } = await this.alice.createAsset({
