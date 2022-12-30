@@ -541,6 +541,7 @@ describe('Various trades with the token', function () {
 		const { new_price, swap_fee, arb_profit_tax, total_fee, coef_multiplier, payout, delta_s, delta_reserve } = await this.get_exchange_result(0, amount);
 		expect(payout).to.be.false
 		expect(delta_reserve).to.be.gt(0)
+		console.log({ new_price, swap_fee, arb_profit_tax, total_fee, coef_multiplier, payout, delta_s, delta_reserve })
 
 		const { unit, error } = await this.alice.sendMulti({
 			outputs_by_asset: {
@@ -1270,7 +1271,7 @@ describe('Various trades with the token', function () {
 		let g1_vps = { total: this.pool_vps_g1.a1 + this.pool_vps_g1.a2, a1: this.pool_vps_g1.a1, a2: this.pool_vps_g1.a2 }
 		for (let i = 3; i <= 30; i++)
 			g1_vps['a' + i] = 0;
-		expect(vars['pool_vps_g1']).to.be.deepCloseTo(g1_vps, 0.001)
+		expect(vars['pool_vps_g1']).to.be.deepCloseTo(g1_vps, 0.1)
 		expect(vars['pool_vps_g2']).to.be.deepCloseTo({ total: this.pool_vps_g2.a31, a31: this.pool_vps_g2.a31 }, 0.001);
 		expect(vars['pool_' + this.pool2]).to.be.deep.eq({ asset_key: 'a2', group_key: 'g1', last_lp_emissions: this.state.lp_emissions, received_emissions: this.pool2_state.received_emissions, blacklisted: true })
 		this.state = vars.state
@@ -1349,7 +1350,7 @@ describe('Various trades with the token', function () {
 		let g1_vps = { total: this.pool_vps_g1.a1 + this.pool_vps_g1.a2, a1: this.pool_vps_g1.a1, a2: this.pool_vps_g1.a2 }
 		for (let i = 3; i <= 30; i++)
 			g1_vps['a' + i] = 0;
-		expect(vars['pool_vps_g1']).to.be.deepCloseTo(g1_vps, 0.001)
+		expect(vars['pool_vps_g1']).to.be.deepCloseTo(g1_vps, 0.1)
 		expect(vars['pool_vps_g2']).to.be.deepCloseTo({ total: this.pool_vps_g2.a31, a31: this.pool_vps_g2.a31 }, 0.001);
 		expect(vars['pool_' + this.pool2]).to.be.deep.eq({ asset_key: 'a2', group_key: 'g1', last_lp_emissions: this.state.lp_emissions, received_emissions: this.pool2_state.received_emissions, blacklisted: false })
 		this.state = vars.state
@@ -1415,7 +1416,7 @@ describe('Various trades with the token', function () {
 		const lp_emissions = 0.5 * total_emissions
 		const pool31_emissions = this.pool_vps_g2.a31 / (this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g2.a31) * (this.state.lp_emissions + lp_emissions - this.pool31_initial_lp_emissions)
 		const reward = await this.get_lp_reward(this.bobAddress, this.pool2, this.deposit_aa)
-		expect(reward).to.closeTo(pool31_emissions, 0.0001)
+		expect(reward).to.closeTo(pool31_emissions, 0.001)
 
 		const { unit, error } = await this.bob.triggerAaWithData({
 			toAddress: this.oswap_aa,

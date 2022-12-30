@@ -18,7 +18,7 @@ track votes as normalized VP:
 		$initial_s0 = 1e13;
 		$min_staking_term = 14; // in days
 
-		$lib_aa = 'BDIQASPPCASGYHIMRNQ7P5NAU2M7Q7YE';
+		$lib_aa = 'U6TGY7C5SLLIPDDCEDAXHMZV7Y2DN3GK';
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
 		$year = 31104000; // 360 * 24 * 3600;
 		$max_pools_per_group = 30;

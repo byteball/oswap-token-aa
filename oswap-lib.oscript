@@ -7,6 +7,7 @@
 
 		// increase the supply without changing the price
 		$increase_supply = ($state, $ds) => {
+			require($ds >= 0, "negative ds "||$ds);
 			$s = $state.supply;
 			$s0 = $state.s0;
 			$new_s = $s + $ds;
@@ -20,6 +21,7 @@
 
 		$subtract_grant = ($state, $dr) => {
 			$r = $state.reserve;
+			require($dr < $r, "proposal amount exceeds the reserve");
 			$s = $state.supply;
 			$s0 = $state.s0;
 			
@@ -157,6 +159,7 @@
 			$new_s0 = $s + 1 / ($new_p/$r - 1/$s);
 			require($new_s0 > 0, "appreciation new s0 = "||$new_s0);
 			$coef_multiplier = $s0/$new_s0 * ($new_s0 - $s)/($s0 - $s); //   < 1
+			require($coef_multiplier > 0 AND $coef_multiplier <= 1, "invalid appreciation coef multiplier "||$coef_multiplier);
 			{
 				new_s0: $new_s0,
 				coef_multiplier: $coef_multiplier,
@@ -208,6 +211,7 @@
 				$arb_profit_tax = $r ? $arb_profit_tax_rate * ($new_p1 - $initial_p) * ($new_s1 - $s + $recent_delta_s) / 2 - $recent_tax : 0;
 
 				$net_new_r = $new_r1 - $arb_profit_tax;
+				require($net_new_r >= $r, "net new r should grow, got "||$net_new_r);
 				$new_s = $get_tokens_by_state($net_new_r, $state);
 			//	log('new_s = ', $new_s);
 				$delta_s = $new_s - $s;
@@ -225,12 +229,16 @@
 			if ($tokens){
 				$gross_new_r = ceil($net_new_r + $total_fee);
 				$payout = $r - $gross_new_r;
+				require($payout >= 0, "invalid payout "||$payout);
 				$fee_percent = $total_fee / ($r - $net_new_r) * 100;
 			}
-			else
+			else{ // buying
+				require($total_fee < $delta_r, "total fee would exceed the received amount "||$total_fee);
 				$fee_percent = $total_fee / $delta_r * 100;
+			}
 
 			$coef_multiplier = $gross_new_r / $net_new_r;
+			require($coef_multiplier >= 1, "invalid coef multiplier "||$coef_multiplier);
 
 			$state[$key].delta_s = ($bMerge ? $last_trade.delta_s : 0) + $delta_s;
 			$state[$key].initial_p = $initial_p;
