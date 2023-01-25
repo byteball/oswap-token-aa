@@ -4,6 +4,11 @@ assoc: pool_asset_key => voting power
 {"a12345":1234.56789012345,"a12346":1234.56789012345}
 26 characters per pool, 1024 max, 1024/26=39 pools. One more key is for "total", hence max 38 pools.
 
+var['group_vps'] structure:
+assoc: group_key => voting power
+{"g29":1234.56789012345,"g30":1234.56789012345}
+23 characters per group, 1024 max, 1024/23=44 groups. One more key is for "total", hence max 43 groups.
+
 track only normalized VP: don't need to update VP all the time when nothing is added/removed
 newly added VP has increasingly larger weight and dilutes the existing VP faster.
 track votes as normalized VP:
@@ -22,6 +27,7 @@ track votes as normalized VP:
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
 		$year = 31104000; // 360 * 24 * 3600;
 		$max_pools_per_group = 30;
+		$max_groups = 40;
 
 		$get_param = ($name, $default) => {
 			$value = var[$name];
@@ -536,6 +542,7 @@ track votes as normalized VP:
 											if (!$last_group_num OR length($last_pool_vps) >= $max_pools_per_group + 1){ // start a new group
 												var['last_group_num'] += 1;
 												$group_num = $last_group_num + 1;
+												require($group_num <= $max_groups, "too many groups");
 												$pool_vps = {total:0};
 											}
 											else{
