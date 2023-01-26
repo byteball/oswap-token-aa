@@ -40,7 +40,7 @@ track votes as normalized VP:
 		$get_inflation_rate = () => $get_param('inflation_rate', 0.1);
 		$get_stakers_share = () => $get_param('stakers_share', 0.5); // share of emissions that is distributed among stakers
 		$get_base_tvl = () => $get_param('base_tvl', 1e6); // in USD
-		$get_oracle = () => $get_param('oracle', 'ORACLEADDRESS');
+		$get_oracle = () => $get_param('oracle', 'KMCA3VLWKLO3AWSSDA3LQIKI3OQEN7TV');
 		$get_challenging_period = () => $get_param('challenging_period', 432000); // 5 days
 
 		$get_tvl = () => data_feed[[oracles=$get_oracle(), feed_name='TVL', ifnone=0]];

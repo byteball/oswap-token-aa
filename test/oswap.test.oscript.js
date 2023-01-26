@@ -61,7 +61,7 @@ describe('Various trades with the token', function () {
 
 		this.deposit_aa = this.network.agent.deposit
 
-		oswap_aa = oswap_aa.replace('ORACLEADDRESS', this.oracleAddress)
+		oswap_aa = oswap_aa.replace('KMCA3VLWKLO3AWSSDA3LQIKI3OQEN7TV', this.oracleAddress)
 		const { address: oswap_aa_address, error } = await this.alice.deployAgent(oswap_aa)
 		expect(error).to.be.null
 		this.oswap_aa = oswap_aa_address
