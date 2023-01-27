@@ -526,7 +526,7 @@ track votes as normalized VP:
 									if (!$pool){ // create a new pool
 										var['last_asset_num'] += 1;
 										$last_asset_num = var['last_asset_num'];
-										if ($state.total_normalized_vp == 0 AND $state.supply == 0)
+										if ($state.total_normalized_vp == 0)
 											require($last_asset_num == 1, "only one asset can be added without voting");
 										$asset_key = 'a' || $last_asset_num;
 									/*	if (trigger.data.group_key){ // indicated the group where to add the new pool
