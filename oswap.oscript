@@ -20,7 +20,7 @@ track votes as normalized VP:
 	getters: `{
 
 		$reserve_asset = 'base';
-		$initial_s0 = 1e13;
+		$initial_s0 = 1e12;
 		$min_staking_term = 14; // in days
 
 		$lib_aa = 'U6TGY7C5SLLIPDDCEDAXHMZV7Y2DN3GK';
