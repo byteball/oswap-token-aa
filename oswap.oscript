@@ -86,7 +86,7 @@ track votes as normalized VP:
 
 		$get_vp = ($user_address) => {
 			$user = var['user_' || $user_address];
-			$user ? $user.normalized_vp * 4^((timestamp - $common_ts)/$year) : 0
+			$user ? $user.normalized_vp / 4^((timestamp - $common_ts)/$year) : 0
 		};
 
 		$get_staking_reward = ($user_address) => {
