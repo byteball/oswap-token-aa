@@ -37,7 +37,7 @@ track votes as normalized VP:
 		$get_swap_fee = () => $get_param('swap_fee', 0.003);
 		$get_arb_profit_tax = () => $get_param('arb_profit_tax', 0.9);
 		$get_base_rate = () => $get_param('base_rate', 0.3); // rate of appreciation if TVL = base TVL
-		$get_inflation_rate = () => $get_param('inflation_rate', 0.1);
+		$get_inflation_rate = () => $get_param('inflation_rate', 0.3);
 		$get_stakers_share = () => $get_param('stakers_share', 0.5); // share of emissions that is distributed among stakers
 		$get_base_tvl = () => $get_param('base_tvl', 1e6); // in USD
 		$get_oracle = () => $get_param('oracle', 'KMCA3VLWKLO3AWSSDA3LQIKI3OQEN7TV');
@@ -208,7 +208,7 @@ track votes as normalized VP:
 								reserve_asset: $reserve_asset,
 								buy_freeze_period: 1,
 								launch_date: '2023-04-06 04:34:00',
-								admin_address: '3Y24IXW57546PQAPQ2SXYEPEDNX4KC6Y'
+								admin_address: '3Y24IXW57546PQAPQ2SXYEPEDNX4KC6Y',
 							}
 						}
 					];
@@ -811,6 +811,7 @@ track votes as normalized VP:
 							$state.coef = $state.coef * $res.coef_multiplier;
 							var['state'] =  $state;
 							response['fee%'] = round($res.fee_percent, 4) || '%';
+							response['supply'] = $state.supply;
 						}`
 					}
 				]

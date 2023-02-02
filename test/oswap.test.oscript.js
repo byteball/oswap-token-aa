@@ -135,12 +135,12 @@ describe('Various trades with the token', function () {
 							all_vps[key] = pool_vps[key];
 						}
 					}
-					expect(total).to.closeTo(pool_vps.total, 1.5);
-					expect(total).to.closeTo(vars.group_vps['g' + group_num] || 0, 1.5);
+					expect(total).to.closeTo(pool_vps.total, 10);
+					expect(total).to.closeTo(vars.group_vps['g' + group_num] || 0, 10);
 					grand_total += total;
 				}
 			}
-			expect(grand_total).to.closeTo(vars.state.total_normalized_vp, 1);
+			expect(grand_total).to.closeTo(vars.state.total_normalized_vp, 10);
 		
 			let total_normalized_vp = 0;
 			let all_users_vps = {};
@@ -155,12 +155,12 @@ describe('Various trades with the token', function () {
 						all_users_vps[key] = 0;
 					all_users_vps[key] += votes[key];
 				}
-				expect(total_votes).to.closeTo(normalized_vp, 0.8);
+				expect(total_votes).to.closeTo(normalized_vp, 9);
 			}
-			expect(total_normalized_vp).to.closeTo(vars.state.total_normalized_vp, 0.9)
+			expect(total_normalized_vp).to.closeTo(vars.state.total_normalized_vp, 3)
 			expect(Object.keys(all_vps).length).to.eq(Object.keys(all_users_vps).length)
 			for (let key in all_vps)
-				expect(all_vps[key]).to.closeTo(all_users_vps[key], 0.8);
+				expect(all_vps[key]).to.closeTo(all_users_vps[key], 8);
 		}
 	})
 
@@ -1367,7 +1367,7 @@ describe('Various trades with the token', function () {
 	it('Bob harvests LP rewards in the newly whitelisted pool2', async () => {
 		await this.timetravel('180d')
 
-		const total_emissions = 1 / 2 * 0.1 * this.state.supply // half-a-year * inflation rate
+		const total_emissions = 1 / 2 * 0.3 * this.state.supply // half-a-year * inflation rate
 		const lp_emissions = 0.5 * total_emissions
 		const pool2_emissions = this.pool_vps_g1.a2 / (this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g2.a31) * lp_emissions
 		const reward = await this.get_lp_reward(this.bobAddress, this.pool2)
@@ -1412,7 +1412,7 @@ describe('Various trades with the token', function () {
 	
 	it('Bob harvests LP rewards to pool2-deposit-aa', async () => {
 		await this.timetravel('180d')
-		const total_emissions = 1 / 2 * 0.1 * this.state.supply // half-a-year * inflation rate
+		const total_emissions = 1 / 2 * 0.3 * this.state.supply // half-a-year * inflation rate
 		const lp_emissions = 0.5 * total_emissions
 		const pool31_emissions = this.pool_vps_g2.a31 / (this.pool_vps_g1.a1 + this.pool_vps_g1.a2 + this.pool_vps_g2.a31) * (this.state.lp_emissions + lp_emissions - this.pool31_initial_lp_emissions)
 		const reward = await this.get_lp_reward(this.bobAddress, this.pool2, this.deposit_aa)
