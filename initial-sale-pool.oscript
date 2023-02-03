@@ -39,12 +39,28 @@
 			{
 				if: `{ trigger.output[[asset=$reserve_asset]] > $min_contribution }`,
 				init: `{
-					require(timestamp < $launch_ts - $buy_freeze_period_in_seconds, "no more deposits accepted");
+					$ok = timestamp < $launch_ts - $buy_freeze_period_in_seconds;
+					if (!$ok){
+						$error = "no more deposits accepted";
+						if (!trigger.data.soft_bounce)
+							bounce($error);
+					}
 				}`,
 				messages: [
+					{ // send the reserve back
+						if: "{$error}",
+						app: 'payment',
+						payload: {
+							asset: `{$reserve_asset}`,
+							outputs: [
+								{address: "{$to}", amount: "{trigger.output[[asset=$reserve_asset]] - 10000}"},
+							]
+						}
+					},
 					{
 						app: 'state',
 						state: `{
+							if ($error) return;
 							$amount = trigger.output[[asset=$reserve_asset]] - $network_fee;
 							var['user_'||$to] += $amount;
 							var['total'] += $amount;

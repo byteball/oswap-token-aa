@@ -190,7 +190,7 @@ track votes as normalized VP:
 
 		$challenging_period = $get_challenging_period();
 
-		$initial_sale_pool_base_aa = 'SGP45OT5QZBNK3DWWCPHQ6AD72DKLLMC';
+		$initial_sale_pool_base_aa = 'WPHI4NQTDMCRY5DOOEZBOQPSANZNRN7G';
 
 	}`,
 	messages: {
@@ -766,12 +766,19 @@ track votes as normalized VP:
 					response['coef_multiplier'] = $res.coef_multiplier;
 
 					if ($res.payout AND $res.payout < 0)
-						bounce("unexpected payout < 0");
-					if ($res.payout AND trigger.data.min_reserve_tokens AND $res.payout < trigger.data.min_reserve_tokens)
-						bounce("payout would be only " || $res.payout);
-					if (trigger.data.max_fee_percent AND $res.fee_percent > trigger.data.max_fee_percent)
-						bounce("fee would be " || $res.fee_percent || '%');
+						$error = "unexpected payout < 0";
+					else if ($res.payout AND trigger.data.min_reserve_tokens AND $res.payout < trigger.data.min_reserve_tokens)
+						$error = "payout would be only " || $res.payout;
+					else if (trigger.data.max_fee_percent AND $res.fee_percent > trigger.data.max_fee_percent)
+						$error = "fee would be " || $res.fee_percent || '%';
 					
+					if ($error){
+						if (trigger.data.soft_bounce)
+							return; // will send the coins back to $to
+						else
+							bounce($error);
+					}
+
 					// further hops
 					$hops = trigger.data.hops;
 					$address = $hops[0].address OTHERWISE $to;
@@ -788,7 +795,7 @@ track votes as normalized VP:
 				}`,
 				messages: [
 					{ // send newly minted tokens
-						if: "{$res.delta_s > 0}",
+						if: "{$res.delta_s > 0 AND !$error}",
 						app: 'payment',
 						payload: {
 							asset: `{$asset}`,
@@ -798,11 +805,32 @@ track votes as normalized VP:
 						}
 					},
 					{ // pay out the redeemed reserve
+						if: "{!$error}",
 						app: 'payment',
 						payload: {
 							asset: `{$reserve_asset}`,
 							outputs: [
 								{address: "{$address}", amount: "{$res.payout}", if: "{$res.payout}"},
+							]
+						}
+					},
+					{ // send the tokens back
+						if: "{$error AND $tokens}",
+						app: 'payment',
+						payload: {
+							asset: `{$asset}`,
+							outputs: [
+								{address: "{$to}", amount: "{ $tokens }"}
+							]
+						}
+					},
+					{ // send the reserve back
+						if: "{$error AND !$tokens}",
+						app: 'payment',
+						payload: {
+							asset: `{$reserve_asset}`,
+							outputs: [
+								{address: "{$to}", amount: "{$reserve_asset_amount - 10000}"},
 							]
 						}
 					},
@@ -814,6 +842,8 @@ track votes as normalized VP:
 					{
 						app: 'state',
 						state: `{
+							if ($error)
+								return;
 							$state.supply = $state.supply + $res.delta_s;
 							$state.reserve = $state.reserve + $res.delta_reserve;
 							$state.coef = $state.coef * $res.coef_multiplier;
