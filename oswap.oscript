@@ -154,6 +154,7 @@ track votes as normalized VP:
 				address: '',
 			},
 			total_normalized_vp: 0,
+			total_staked_balance: 0,
 			stakers_emissions: 0,
 			lp_emissions: 0,
 		};
@@ -208,7 +209,7 @@ track votes as normalized VP:
 								reserve_asset: $reserve_asset,
 								buy_freeze_period: 1,
 								launch_date: '2023-04-06 04:34:00',
-								admin_address: '3Y24IXW57546PQAPQ2SXYEPEDNX4KC6Y',
+								admin_address: '3Y24IXW57546PQAPQ2SXYEPEDNX4KC6Y'
 							}
 						}
 					];
@@ -273,7 +274,7 @@ track votes as normalized VP:
 							$accumulated_reward = trigger.data.stake_reward AND $to == trigger.address ? floor($user.reward) : 0;
 							$amount = trigger.output[[asset=$asset]] + $accumulated_reward;
 							$new_balance = $user.balance + $amount;
-						//	require($amount > 0, "nothing to stake");
+						//	require($amount > 0, "nothing to stake");   // 0 to only extend the term
 							$final_voting_power = $new_balance / 256;
 							$normalized_voting_power = $final_voting_power * 4^($term/360 + (timestamp - $common_ts)/$year); // vp decays 4 times every year
 
@@ -286,6 +287,9 @@ track votes as normalized VP:
 							$delta_normalized_vp = $normalized_voting_power - $user.normalized_vp;
 							$user.normalized_vp = $normalized_voting_power;
 							$state.total_normalized_vp = $state.total_normalized_vp + $delta_normalized_vp;
+
+							$state.total_staked_balance = $state.total_staked_balance + $amount;
+							response['total_staked_balance'] = $state.total_staked_balance;
 
 							$lib#1.$distribute_new_vp($votes, $pool_vps, $delta_normalized_vp, trigger.data.percentages);
 							$group_vps[$group_key] = $group_vps[$group_key] + $delta_normalized_vp;
@@ -341,6 +345,10 @@ track votes as normalized VP:
 							var['group_vps'] = $group_vps;
 
 							$state.total_normalized_vp = $state.total_normalized_vp - $removed_normalized_vp;
+
+							$state.total_staked_balance = $state.total_staked_balance - $user.balance;
+							response['total_staked_balance'] = $state.total_staked_balance;
+
 							var['state'] = $state;
 						}`
 					}
@@ -353,7 +361,7 @@ track votes as normalized VP:
 				init: `{
 					$lib#0.$distribute_stakers_emissions($state, $user, $props);
 					$reward = floor($user.reward); // fractional part is lost
-				//	require($reward > 0, "no reward yet");
+				//	require($reward > 0, "no reward yet");   // if 0, only updates the state
 				}`,
 				messages: [
 					{ // send the accumulated reward
