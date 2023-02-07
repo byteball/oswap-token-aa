@@ -209,7 +209,7 @@ track votes as normalized VP:
 								reserve_asset: $reserve_asset,
 								buy_freeze_period: 1,
 								launch_date: '2023-04-06 04:34:00',
-								admin_address: '3Y24IXW57546PQAPQ2SXYEPEDNX4KC6Y'
+								admin_address: '3Y24IXW57546PQAPQ2SXYEPEDNX4KC6Y',
 							}
 						}
 					];
@@ -274,7 +274,7 @@ track votes as normalized VP:
 							$accumulated_reward = trigger.data.stake_reward AND $to == trigger.address ? floor($user.reward) : 0;
 							$amount = trigger.output[[asset=$asset]] + $accumulated_reward;
 							$new_balance = $user.balance + $amount;
-						//	require($amount > 0, "nothing to stake");   // 0 to only extend the term
+						//	require($amount > 0, "nothing to stake");  // 0 to only extend the term
 							$final_voting_power = $new_balance / 256;
 							$normalized_voting_power = $final_voting_power * 4^($term/360 + (timestamp - $common_ts)/$year); // vp decays 4 times every year
 
@@ -360,8 +360,8 @@ track votes as normalized VP:
 				if: `{ $asset AND trigger.data.withdraw_staking_reward }`,
 				init: `{
 					$lib#0.$distribute_stakers_emissions($state, $user, $props);
-					$reward = floor($user.reward); // fractional part is lost
-				//	require($reward > 0, "no reward yet");   // if 0, only updates the state
+					$reward = floor($user.reward);   // fractional part is lost
+				//	require($reward > 0, "no reward yet"); // if 0, only updates the state
 				}`,
 				messages: [
 					{ // send the accumulated reward
@@ -842,14 +842,14 @@ track votes as normalized VP:
 					{
 						app: 'state',
 						state: `{
-							if ($error)
-								return;
+							if ($error) return;
 							$state.supply = $state.supply + $res.delta_s;
 							$state.reserve = $state.reserve + $res.delta_reserve;
 							$state.coef = $state.coef * $res.coef_multiplier;
 							var['state'] =  $state;
 							response['fee%'] = round($res.fee_percent, 4) || '%';
 							response['supply'] = $state.supply;
+							response['reserve'] = $state.reserve;
 						}`
 					}
 				]
