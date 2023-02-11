@@ -19,6 +19,8 @@ track votes as normalized VP:
 	doc_url: "https://oswap.io/token.json",
 	getters: `{
 
+		/* nonce: 29566482 */
+
 		$reserve_asset = 'base';
 		$initial_s0 = 1e12;
 		$min_staking_term = 14; // in days
@@ -769,6 +771,8 @@ track votes as normalized VP:
 						$error = "unexpected payout < 0";
 					else if ($res.payout AND trigger.data.min_reserve_tokens AND $res.payout < trigger.data.min_reserve_tokens)
 						$error = "payout would be only " || $res.payout;
+					else if ($res.delta_s > 0 AND trigger.data.min_tokens AND $res.delta_s < trigger.data.min_tokens)
+						$error = "would buy only " || $res.delta_s;
 					else if (trigger.data.max_fee_percent AND $res.fee_percent > trigger.data.max_fee_percent)
 						$error = "fee would be " || $res.fee_percent || '%';
 					
