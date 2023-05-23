@@ -88,8 +88,8 @@ describe('Various trades with the token', function () {
 			expect(error).to.be.null
 		}
 
-		this.get_price = async (asset_label, bAfterInterest = true) => {
-			return await this.executeGetter(this.oswap_aa, 'get_price', [asset_label, 0, 0, bAfterInterest])
+		this.get_price = async () => {
+			return await this.executeGetter(this.oswap_aa, 'get_price')
 		}
 
 		this.get_exchange_result = async (tokens, delta_r) => {
