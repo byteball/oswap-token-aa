@@ -58,7 +58,7 @@ track votes as normalized VP:
 		$get_reserve = ($s) => {
 			$state = var['state'] OTHERWISE {coef: 1, s0: $initial_s0, supply: 0, reserve: 0};
 			$apply_appreciation($state);
-			($lib_aa||'')#0.$get_reserve_by_state(exists($s) ? $s : $s, $state);
+			($lib_aa||'')#0.$get_reserve_by_state(exists($s) ? $s : $state.supply, $state);
 		};
 
 		$get_tokens = ($r) => {
