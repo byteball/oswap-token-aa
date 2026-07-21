@@ -192,8 +192,6 @@ track votes as normalized VP:
 
 		$challenging_period = $get_challenging_period();
 
-		$initial_sale_pool_base_aa = 'WPHI4NQTDMCRY5DOOEZBOQPSANZNRN7G';
-
 	}`,
 	messages: {
 		cases: [
@@ -202,20 +200,6 @@ track votes as normalized VP:
 			{
 				if: `{ trigger.data.define AND !$asset }`,
 				init: `{
-					$initial_sale_pool_aa = [
-						'autonomous agent',
-						{
-							base_aa: $initial_sale_pool_base_aa,
-							params: {
-								token_aa: this_address,
-								reserve_asset: $reserve_asset,
-								buy_freeze_period: 1,
-								launch_date: '2023-04-06 04:34:00',
-								admin_address: '3Y24IXW57546PQAPQ2SXYEPEDNX4KC6Y',
-							}
-						}
-					];
-					$constants.initial_sale_pool_address = chash160($initial_sale_pool_aa);
 				}`,
 				messages: [
 					{
@@ -232,15 +216,8 @@ track votes as normalized VP:
 						}
 					},
 					{
-						app: 'definition',
-						payload: {
-							definition: `{$initial_sale_pool_aa}`
-						}
-					},
-					{
 						app: 'state',
 						state: `{
-							response['initial_sale_pool_address'] = $constants.initial_sale_pool_address;
 							response['asset'] = response_unit;
 							$constants.asset = response_unit;
 							var['constants'] = $constants;
@@ -752,8 +729,6 @@ track votes as normalized VP:
 			{
 				if: `{ $asset AND (trigger.output[[asset=$reserve_asset]] > $min_contribution OR trigger.output[[asset=$asset]] > 0) }`,
 				init: `{
-
-					require($state.supply OR trigger.address == $constants.initial_sale_pool_address, "only the initial sale pool is allowed to make the first purchase");
 
 					$tokens = trigger.output[[asset=$asset]];
 					if ($tokens)
