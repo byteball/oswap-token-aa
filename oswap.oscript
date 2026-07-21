@@ -654,6 +654,8 @@ track votes as normalized VP:
 							$bLeaderChanged = true;
 							response['new_leader'] = $value;
 						}
+						else if (exists($leader.value) AND $leader.value == $value)
+							$new_leader_vp = $new_vp; // reinforcing the current leader: use the tally that includes this vote
 						else
 							$new_leader_vp = $leader_vp;
 						$bProposalJustFinished = $new_leader_vp > $state.total_normalized_vp/2 AND $name == 'proposal' AND !$proposal.result;
