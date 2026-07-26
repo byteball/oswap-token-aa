@@ -45,7 +45,12 @@ track votes as normalized VP:
 		$get_oracle = () => $get_param('oracle', 'KMCA3VLWKLO3AWSSDA3LQIKI3OQEN7TV');
 		$get_challenging_period = () => $get_param('challenging_period', 432000); // 5 days
 
-		$get_tvl = () => data_feed[[oracles=$get_oracle(), feed_name='TVL', ifnone=0]];
+		$get_tvl = () => {
+			$tvl = data_feed[[oracles=$get_oracle(), feed_name='TVL', ifnone=0]];
+			if (typeof($tvl) != 'number' OR $tvl < 0 OR $tvl > 1e14)
+				return 10;
+			$tvl
+		};
 
 		$get_appreciation_rate = () => $get_base_rate() * $get_tvl() / $get_base_tvl();
 
