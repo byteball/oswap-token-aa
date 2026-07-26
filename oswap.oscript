@@ -623,6 +623,7 @@ track votes as normalized VP:
 					}
 					$prev_vote = var['user_value_votes_'||$user_address||'_'||$full_name];
 					$vp = $user.normalized_vp;
+					require($vp > 0, "you have no voting power");
 					$leader = var['leader_'||$full_name] OTHERWISE {};
 					$subtracted_from_leader_vp = ($prev_vote AND exists($leader.value) AND $prev_vote.value == $leader.value AND $value != $prev_vote.value) ? $prev_vote.vp : 0; // removing my vote from the current leader
 					$leader_vp = exists($leader.value) ? var['value_votes_'||$full_name||'_'||$leader.value] - $subtracted_from_leader_vp : 0;
