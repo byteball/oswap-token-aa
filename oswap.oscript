@@ -673,7 +673,7 @@ track votes as normalized VP:
 								};
 
 								// commit token params
-								if ($name != 'proposal' AND $is_new_value() AND ($new_leader_vp > $state.total_normalized_vp/2 OR timestamp > $leader.flip_ts + $challenging_period AND $name != 'challenging_period')){
+								if ($name != 'proposal' AND $is_new_value() AND exists($leader.flip_ts) AND ($new_leader_vp > $state.total_normalized_vp/2 OR timestamp > $leader.flip_ts + $challenging_period AND $name != 'challenging_period')){
 									var[$name] = $leader.value;
 									response['committed'] = $leader.value;
 								}
