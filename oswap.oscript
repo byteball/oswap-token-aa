@@ -597,17 +597,17 @@ track votes as normalized VP:
 						else if ($name == 'arb_profit_tax')
 							require($value >= 0, "invalid value");
 						else if ($name == 'base_rate')
-							require($value >= 0, "invalid value");
+							require($value >= 0 AND $value <= 10, "invalid value");
 						else if ($name == 'inflation_rate')
-							require($value >= 0, "invalid value");
+							require($value >= 0 AND $value <= 100, "invalid value");
 						else if ($name == 'stakers_share')
 							require($value >= 0 AND $value <= 1, "invalid value");
 						else if ($name == 'base_tvl')
-							require($value > 0, "invalid value");
+							require($value > 1000, "invalid value");
 						else if ($name == 'oracle')
 							require(is_valid_address($value), "invalid value");
 						else if ($name == 'challenging_period')
-							require(is_integer($value) AND $value > 0, "invalid value");
+							require(is_integer($value) AND $value > 86400, "invalid value");
 						else if ($name == 'proposal'){
 							require($value == 'yes' OR $value == 'no', "invalid value");
 							require(parse_date($proposal.expiry) > timestamp, "the proposal has expired");
@@ -702,7 +702,7 @@ track votes as normalized VP:
 				if: `{ trigger.data.add_proposal }`,
 				init: `{
 					require(is_valid_address(trigger.data.recipient), "invalid grant recipient address");
-					require(is_integer(trigger.data.amount) AND trigger.data.amount > 0, "invalid grant amount");
+					require(is_integer(trigger.data.amount) AND trigger.data.amount > 0 AND trigger.data.amount <= $state.reserve/10, "invalid grant amount");
 					require(unit[trigger.data.unit], "proposal unit not found");
 					require(trigger.data.expiry, "proposal expiry date not set");
 					$expiry_ts = parse_date(trigger.data.expiry);
