@@ -31,6 +31,11 @@ track votes as normalized VP:
 		$max_pools_per_group = 30;
 		$max_groups = 40;
 
+		$get_deposited_supply = () => {
+			$state = var['state'];
+			$state.total_staked_balance
+		};
+
 		$get_param = ($name, $default) => {
 			$value = var[$name];
 			exists($value) ? $value : $default
