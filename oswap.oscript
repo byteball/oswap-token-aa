@@ -132,8 +132,10 @@ track votes as normalized VP:
 		$lib = $lib_aa||'';
 		
 		// reserve
-		$min_contribution = ($reserve_asset == 'base') ? 99999 : 0;
-		$network_fee = ($reserve_asset == 'base') ? 1000 : 0;
+	//	$min_contribution = ($reserve_asset == 'base') ? 99999 : 0;
+	//	$network_fee = ($reserve_asset == 'base') ? 1000 : 0;
+		$min_contribution = 99999;
+		$network_fee = 1000;
 
 		$constants = var['constants'] OTHERWISE {};
 
