@@ -168,7 +168,7 @@ track votes as normalized VP:
 			lp_emissions: 0,
 		};
 
-		if ($asset)
+		if ($asset AND !(trigger.data.vote_value AND trigger.data.name != 'proposal'))
 			$apply_appreciation($state);
 
 		if (trigger.data.to AND !is_valid_address(trigger.data.to))
