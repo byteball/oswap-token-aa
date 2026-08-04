@@ -157,9 +157,15 @@
 			$p = $get_price_by_state($s, $state);
 			$new_p = $p * (1 +  $elapsed_time/$year * $appreciation_rate);
 			$new_s0 = $s + 1 / ($new_p/$r - 1/$s);
-			require($new_s0 > 0, "appreciation new s0 = "||$new_s0);
+			if ($new_s0 <= 0){
+				log('invalid new_s0, skipping appreciation', $new_s0);
+				return {new_s0: $s0, coef_multiplier: 1};
+			}
 			$coef_multiplier = $s0/$new_s0 * ($new_s0 - $s)/($s0 - $s); //   < 1
-			require($coef_multiplier > 0 AND $coef_multiplier <= 1, "invalid appreciation coef multiplier "||$coef_multiplier);
+			if ($coef_multiplier <= 0 OR $coef_multiplier > 1){
+				log('invalid coef_multiplier, skipping appreciation', $coef_multiplier);
+				return {new_s0: $s0, coef_multiplier: 1};
+			}
 			{
 				new_s0: $new_s0,
 				coef_multiplier: $coef_multiplier,

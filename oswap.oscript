@@ -25,7 +25,7 @@ track votes as normalized VP:
 		$initial_s0 = 1e12;
 		$min_staking_term = 14; // in days
 
-		$lib_aa = 'U6TGY7C5SLLIPDDCEDAXHMZV7Y2DN3GK';
+		$lib_aa = 'IMKZEIOFV3RJDBNXMN6J3B7FGCWCDA2C';
 		$common_ts = 1657843200; // Fri Jul 15 2022 00:00:00 GMT+0000
 		$year = 31104000; // 360 * 24 * 3600;
 		$max_pools_per_group = 30;
@@ -173,7 +173,7 @@ track votes as normalized VP:
 			lp_emissions: 0,
 		};
 
-		if ($asset AND !(trigger.data.vote_value AND trigger.data.name != 'proposal'))
+		if ($asset)
 			$apply_appreciation($state);
 
 		if (trigger.data.to AND !is_valid_address(trigger.data.to))
