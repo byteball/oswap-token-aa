@@ -57,7 +57,7 @@ track votes as normalized VP:
 			$tvl
 		};
 
-		$get_appreciation_rate = () => $get_base_rate() * $get_tvl() / $get_base_tvl();
+		$get_appreciation_rate = () => min($get_base_rate() * $get_tvl() / $get_base_tvl(), 100);
 
 
 		$apply_appreciation = ($state) => {
