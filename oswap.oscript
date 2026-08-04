@@ -86,7 +86,7 @@ track votes as normalized VP:
 
 
 		$get_exchange_result = ($tokens, $delta_r) => {
-			$state = var['state'];
+			$state = var['state'] OTHERWISE {coef: 1, s0: $initial_s0, supply: 0, reserve: 0};
 			$props = {
 				swap_fee: $get_swap_fee(),
 				arb_profit_tax: $get_arb_profit_tax(),
