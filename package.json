@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "aa-testkit": "git+https://github.com/valyakin/aa-testkit.git",
+    "aabot": "git+https://github.com/byteball/aabot.git",
     "chai": "^4.2.0",
     "mocha": "^6.2.0"
   },

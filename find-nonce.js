@@ -10,7 +10,7 @@ process.on('unhandledRejection', up => {
 });
 
 
-const prefix = 'OSWAP';
+const prefix = 'OSWAP2';
 const re = /\/\* nonce: \w+ \*\//;
 
 function findNonce(definition) {

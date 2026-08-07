@@ -1,0 +1,12 @@
+
+{
+	messages: [{
+		app: 'state',
+		state: `{
+			var['some_var'] = {
+				key: 'value',
+				key2: 10,
+			};
+		}`
+	}]
+}

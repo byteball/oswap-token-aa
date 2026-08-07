@@ -19,7 +19,10 @@ track votes as normalized VP:
 	doc_url: "https://oswap.io/token.json",
 	getters: `{
 
-		/* nonce: 29566482 */
+		/* nonce: 310233792 */
+
+		$old_oswap_aa = 'OSWAPWKOXZKJPYWATNK47LRDV4UN4K7H';
+		$replicator = 'OKQFTRCETG2JC7ROTYY7KXTWFAWW4C25'; // replicates data from the old AA, then renounces one's rights
 
 		$reserve_asset = 'base';
 		$initial_s0 = 1e12;
@@ -204,11 +207,12 @@ track votes as normalized VP:
 
 		$challenging_period = $get_challenging_period();
 
+		$is_replicator_request = trigger.address == $replicator AND !$constants.renounced;
 	}`,
 	messages: {
 		cases: [
 
-			// 0. define the token asset and initial sale AA
+			// 0. define the token asset
 			{
 				if: `{ trigger.data.define AND !$asset }`,
 				init: `{
@@ -233,6 +237,68 @@ track votes as normalized VP:
 							response['asset'] = response_unit;
 							$constants.asset = response_unit;
 							var['constants'] = $constants;
+						}`
+					}
+				]
+			},
+
+
+			// replicate variables from the old AA
+			{
+				if: `{ $is_replicator_request AND trigger.data.var_name }`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							require(trigger.data.var_name != 'constants' AND !starts_with(trigger.data.var_name, 'lp_') AND !starts_with(trigger.data.var_name, 'pool_asset_balance_'), "constants, lp_*, and pool_asset_balance_* cannot be replicated");
+							var[trigger.data.var_name] = var[$old_oswap_aa][trigger.data.var_name];
+						}`
+					}
+				]
+			},
+
+			
+			// restore user balances
+			{
+				if: `{ $is_replicator_request AND trigger.data.outputs }`,
+				init: `{
+					$payload = {
+						asset: $asset,
+						outputs: trigger.data.outputs,
+					};
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: '{$payload}'
+					},
+				]
+			},
+
+
+			// renounce
+			{
+				if: `{ $is_replicator_request AND trigger.data.renounce }`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							$constants.renounced = true;
+							var['constants'] = $constants;
+						}`
+					}
+				]
+			},
+
+
+			// add initial balance from the old AA
+			{
+				if: `{ trigger.data.add_initial_balance }`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							response['added'] = trigger.output[[asset=base]];
 						}`
 					}
 				]

@@ -52,3 +52,4 @@ Session.vim
 .idea
 
 .testdata-*
+old_vars.json
